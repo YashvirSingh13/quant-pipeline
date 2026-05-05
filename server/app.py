@@ -1,22 +1,22 @@
 """
-server/app.py — FastAPI backend for the Quant Pipeline.
+server/app.py — Self-learning FastAPI backend.
 
-Start with:
-    uvicorn server.app:app --reload --port 3000
+New behaviour vs v2:
+  • All artefacts stored in DATA_DIR (Railway Volume → persists restarts)
+  • /live auto-registers new tickers → debounced background retrain
+  • /stocks   → list all known stocks
+  • /learning → is a background auto-retrain in progress?
 
-Endpoints:
-    GET  /              → health check + training date
-    POST /predict       → manual feature input → BUY / SELL
-    GET  /live          → ?ticker=RELIANCE.NS  → auto-fetch + predict
-    GET  /metadata      → model info (accuracy, features, training date)
-    POST /retrain       → kick off background retraining
-    GET  /retrain/status → is a retrain in progress?
+Environment variables:
+  DATA_DIR   path to persistent storage  (default: <root>/data)
+  PORT       server port                 (set by Railway automatically)
 """
 
 import os
 import sys
 import json
 import subprocess
+import threading
 
 import numpy as np
 import joblib
@@ -27,57 +27,132 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 # ── Paths ───────────────────────────────────────────────────────────────────────
-BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR   = os.path.dirname(BASE_DIR)
-MODEL_PATH = os.path.join(ROOT_DIR, "model.pkl")
-LE_PATH    = os.path.join(ROOT_DIR, "label_encoder.pkl")
-META_PATH  = os.path.join(ROOT_DIR, "model_metadata.json")
-PUBLIC_DIR = os.path.join(ROOT_DIR, "public")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(BASE_DIR)
+
+DATA_DIR    = os.environ.get("DATA_DIR", os.path.join(ROOT_DIR, "data"))
+os.makedirs(DATA_DIR, exist_ok=True)
+
+STOCKS_FILE = os.path.join(DATA_DIR, "known_stocks.json")
+MODEL_PATH  = os.path.join(DATA_DIR, "model.pkl")
+LE_PATH     = os.path.join(DATA_DIR, "label_encoder.pkl")
+META_PATH   = os.path.join(DATA_DIR, "model_metadata.json")
+PUBLIC_DIR  = os.path.join(ROOT_DIR, "public")
+
+SEED_STOCKS = ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS"]
 
 # ── App ─────────────────────────────────────────────────────────────────────────
-app = FastAPI(title="Quant Pipeline API", version="2.0")
+app = FastAPI(title="Quant Pipeline API", version="3.0")
+app.add_middleware(CORSMiddleware, allow_origins=["*"],
+                   allow_methods=["*"], allow_headers=["*"])
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],   # tighten to specific origin in production
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# ── Module-level state (loaded once at startup) ──────────────────────────────────
-_model         = None
-_label_encoder = None
+# ── In-memory state ──────────────────────────────────────────────────────────────
+_model          = None
+_label_encoder  = None
 _metadata: dict = {}
-_retraining    = False
+_retraining     = False   # manual retrain (user-triggered)
+_learning       = False   # auto-retrain (new stock detected)
+_retrain_timer  = None    # debounce timer
 
+# ── Stock registry helpers ───────────────────────────────────────────────────────
+def _load_known_stocks() -> list:
+    if os.path.exists(STOCKS_FILE):
+        with open(STOCKS_FILE) as f:
+            return json.load(f)
+    _save_known_stocks(SEED_STOCKS)
+    return SEED_STOCKS.copy()
+
+def _save_known_stocks(stocks: list):
+    with open(STOCKS_FILE, "w") as f:
+        json.dump(sorted(set(stocks)), f, indent=2)
+
+def _is_known(ticker: str) -> bool:
+    return ticker in _load_known_stocks()
+
+def _register_stock(ticker: str) -> bool:
+    """Add ticker to registry. Returns True if it was newly added."""
+    stocks = _load_known_stocks()
+    if ticker in stocks:
+        return False
+    stocks.append(ticker)
+    _save_known_stocks(stocks)
+    print(f"📌 New stock registered: {ticker} (total: {len(stocks)})")
+    return True
+
+# ── Artefact loading ─────────────────────────────────────────────────────────────
 def _reload_artefacts():
-    """Load / reload model, encoder, and metadata from disk."""
     global _model, _label_encoder, _metadata
     if os.path.exists(MODEL_PATH):
         _model = joblib.load(MODEL_PATH)
         print("✅ model.pkl loaded")
     else:
-        print("⚠  model.pkl not found — run  python ml/train.py  first")
+        print("⚠  model.pkl not found")
     if os.path.exists(LE_PATH):
         _label_encoder = joblib.load(LE_PATH)
     if os.path.exists(META_PATH):
         with open(META_PATH) as f:
             _metadata = json.load(f)
 
+# ── Training runner ──────────────────────────────────────────────────────────────
+def _run_training():
+    """Blocking call to train.py. Call from a thread."""
+    train_script = os.path.join(ROOT_DIR, "ml", "train.py")
+    env = {**os.environ, "DATA_DIR": DATA_DIR}
+    subprocess.run([sys.executable, train_script],
+                   check=True, cwd=ROOT_DIR, env=env)
+    _reload_artefacts()
+
+# ── Debounced auto-retrain ───────────────────────────────────────────────────────
+# When a new stock is searched, we wait DEBOUNCE_SECS before retraining.
+# If another new stock arrives in that window, the timer resets —
+# so multiple quick searches get batched into one retrain.
+DEBOUNCE_SECS = 30
+
+def _schedule_auto_retrain():
+    """Cancel any pending timer and start a fresh one."""
+    global _retrain_timer
+    if _retrain_timer is not None:
+        _retrain_timer.cancel()
+    _retrain_timer = threading.Timer(DEBOUNCE_SECS, _do_auto_retrain)
+    _retrain_timer.daemon = True
+    _retrain_timer.start()
+    print(f"⏱  Auto-retrain scheduled in {DEBOUNCE_SECS}s …")
+
+def _do_auto_retrain():
+    global _learning, _retrain_timer
+    if _retraining:
+        # Manual retrain already running — try again in 60s
+        _retrain_timer = threading.Timer(60, _do_auto_retrain)
+        _retrain_timer.daemon = True
+        _retrain_timer.start()
+        return
+    _learning = True
+    try:
+        print("🧠 Auto-retrain started (new stock added) …")
+        _run_training()
+        print("🧠 Auto-retrain complete ✅")
+    except Exception as exc:
+        print(f"❌ Auto-retrain failed: {exc}")
+    finally:
+        _learning = False
+        _retrain_timer = None
+
+# ── Startup ──────────────────────────────────────────────────────────────────────
 @app.on_event("startup")
 def startup():
-    # Auto-train on first deploy if no model exists yet
+    # Ensure stock registry exists
+    if not os.path.exists(STOCKS_FILE):
+        _save_known_stocks(SEED_STOCKS)
+
+    # First-boot training if no model exists
     if not os.path.exists(MODEL_PATH):
-        print("🚀 No model found — running initial training (this takes ~2 min)…")
-        train_script = os.path.join(ROOT_DIR, "ml", "train.py")
+        print("🚀 First boot — running initial training (~3 min) …")
         try:
-            subprocess.run(
-                [sys.executable, train_script],
-                check=True, cwd=ROOT_DIR
-            )
-        except subprocess.CalledProcessError as exc:
+            _run_training()
+        except Exception as exc:
             print(f"❌ Initial training failed: {exc}")
-    _reload_artefacts()
+    else:
+        _reload_artefacts()
 
 # ── Technical indicator helpers ──────────────────────────────────────────────────
 def _rsi(s, p=14):
@@ -87,8 +162,8 @@ def _rsi(s, p=14):
     return 100 - (100 / (1 + g / l))
 
 def _macd(s, fast=12, slow=26, sig=9):
-    ml  = s.ewm(span=fast, adjust=False).mean() - s.ewm(span=slow, adjust=False).mean()
-    sl  = ml.ewm(span=sig, adjust=False).mean()
+    ml = s.ewm(span=fast, adjust=False).mean() - s.ewm(span=slow, adjust=False).mean()
+    sl = ml.ewm(span=sig, adjust=False).mean()
     return ml, sl
 
 def _bb_width(s, p=20):
@@ -96,25 +171,24 @@ def _bb_width(s, p=20):
     std = s.rolling(p).std()
     return (sma + 2*std - (sma - 2*std)) / sma
 
-# ── Live feature fetch ──────────────────────────────────────────────────────────
 def _live_features(ticker: str) -> dict:
-    df = yf.download(ticker, period="1y", interval="1d",
+    # Fetch enough history for MA200 (needs ~200 rows = ~10 months)
+    df = yf.download(ticker, period="14mo", interval="1d",
                      auto_adjust=True, progress=False)
-    if df.empty:
+    if df.empty or len(df) < 60:
         raise ValueError(f"No data found for ticker '{ticker}'.")
 
     close = df["Close"].squeeze()
     vol   = df["Volume"].squeeze()
-
-    ma50   = float(close.rolling(50).mean().iloc[-1])
-    ma200  = float(close.rolling(200).mean().iloc[-1])
+    ma50  = float(close.rolling(50).mean().iloc[-1])
+    ma200 = float(close.rolling(200).mean().iloc[-1])
     ml, sl = _macd(close)
 
     ticker_code = 0
     if _label_encoder is not None and ticker in _label_encoder.classes_:
         ticker_code = int(_label_encoder.transform([ticker])[0])
 
-    feats = {
+    return {
         "RSI":         float(_rsi(close).iloc[-1]),
         "MA50":        ma50,
         "MA200":       ma200,
@@ -126,11 +200,9 @@ def _live_features(ticker: str) -> dict:
         "BB_Width":    float(_bb_width(close).iloc[-1]),
         "Volume_Log":  float(np.log1p(vol.iloc[-1])),
         "Ticker":      ticker_code,
-        # extra context returned to UI
         "_last_price": float(close.iloc[-1]),
         "_as_of":      str(df.index[-1].date()),
     }
-    return feats
 
 _FEATURE_ORDER = [
     "RSI", "MA50", "MA200", "MA_Cross", "Volatility",
@@ -140,43 +212,50 @@ _FEATURE_ORDER = [
 
 def _run_predict(feature_values: list) -> dict:
     if _model is None:
-        raise RuntimeError("Model not loaded. Run  python ml/train.py  first.")
+        raise RuntimeError("Model not loaded yet. Please wait for training to complete.")
     threshold = _metadata.get("threshold", 0.6)
     prob      = float(_model.predict_proba([feature_values])[0][1])
     return {
-        "signal":       "BUY" if prob > threshold else "SELL",
-        "probability":  round(prob * 100, 2),
-        "threshold":    threshold,
-        "trained_at":   _metadata.get("trained_at", "unknown"),
-        "cv_accuracy":  _metadata.get("cv_accuracy_mean"),
+        "signal":      "BUY" if prob > threshold else "SELL",
+        "probability": round(prob * 100, 2),
+        "threshold":   threshold,
+        "trained_at":  _metadata.get("trained_at", "unknown"),
+        "cv_accuracy": _metadata.get("cv_accuracy_mean"),
+        "n_stocks":    _metadata.get("n_stocks", len(_metadata.get("stocks", []))),
     }
 
-# ── Pydantic schema ─────────────────────────────────────────────────────────────
+# ── Schemas ──────────────────────────────────────────────────────────────────────
 class PredictBody(BaseModel):
-    RSI:         float
-    MA50:        float
-    MA200:       float
-    MA_Cross:    float
-    Volatility:  float
-    MACD:        float
-    MACD_Signal: float
-    MACD_Hist:   float
-    BB_Width:    float
-    Volume_Log:  float
-    Ticker:      int = 0
+    RSI: float;  MA50: float;  MA200: float;  MA_Cross: float
+    Volatility: float;  MACD: float;  MACD_Signal: float
+    MACD_Hist: float;  BB_Width: float;  Volume_Log: float
+    Ticker: int = 0
 
-# ── Routes ──────────────────────────────────────────────────────────────────────
+# ── Routes ───────────────────────────────────────────────────────────────────────
 @app.get("/health")
 def health():
     return {
-        "status":     "ok",
+        "status":      "ok",
         "model_ready": _model is not None,
         "trained_at":  _metadata.get("trained_at"),
+        "n_stocks":    len(_load_known_stocks()),
+        "learning":    _learning,
+        "retraining":  _retraining,
+    }
+
+@app.get("/stocks")
+def list_stocks():
+    """All stocks the model knows about."""
+    stocks = _load_known_stocks()
+    known_by_model = list(_label_encoder.classes_) if _label_encoder else []
+    return {
+        "registered": stocks,
+        "in_model":   known_by_model,
+        "total":      len(stocks),
     }
 
 @app.post("/predict")
 def predict_manual(body: PredictBody):
-    """BUY / SELL from manually supplied feature values."""
     vals = [getattr(body, f) for f in _FEATURE_ORDER]
     try:
         return _run_predict(vals)
@@ -186,50 +265,63 @@ def predict_manual(body: PredictBody):
 @app.get("/live")
 def predict_live(ticker: str):
     """
-    Fetch live data from Yahoo Finance, compute features, and predict.
-    ?ticker=RELIANCE.NS
+    Fetch live features and predict.
+    If ticker is new → registers it and triggers a background retrain automatically.
     """
+    # Validate ticker exists on Yahoo Finance
     try:
         feats = _live_features(ticker)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
-    vals   = [feats[f] for f in _FEATURE_ORDER]
+    # Run prediction with current model (immediate response)
+    vals = [feats[f] for f in _FEATURE_ORDER]
     try:
         result = _run_predict(vals)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
-    result["features"]   = {k: v for k, v in feats.items() if not k.startswith("_")}
-    result["last_price"] = feats["_last_price"]
-    result["as_of"]      = feats["_as_of"]
+    # Check if this is a new stock and register it
+    is_new = _register_stock(ticker)
+    if is_new:
+        _schedule_auto_retrain()
+
+    result["features"]    = {k: v for k, v in feats.items() if not k.startswith("_")}
+    result["last_price"]  = feats["_last_price"]
+    result["as_of"]       = feats["_as_of"]
+    result["new_stock"]   = is_new
+    result["learning"]    = is_new or _learning
+    result["total_stocks"] = len(_load_known_stocks())
     return result
 
 @app.get("/metadata")
 def get_metadata():
     if not _metadata:
-        raise HTTPException(status_code=404, detail="No metadata found. Train a model first.")
-    return _metadata
+        raise HTTPException(status_code=404, detail="No metadata yet.")
+    return {**_metadata, "registered_stocks": _load_known_stocks()}
+
+@app.get("/learning")
+def learning_status():
+    return {
+        "learning":   _learning,
+        "retraining": _retraining,
+        "n_stocks":   len(_load_known_stocks()),
+    }
 
 @app.post("/retrain")
-def retrain(background_tasks: BackgroundTasks):
-    """Kick off a background model retrain. Returns immediately."""
+def manual_retrain(background_tasks: BackgroundTasks):
+    """User-triggered full retrain."""
     global _retraining
-    if _retraining:
-        raise HTTPException(status_code=409, detail="Retraining already in progress.")
+    if _retraining or _learning:
+        raise HTTPException(status_code=409, detail="Training already in progress.")
 
     def _run():
         global _retraining
         _retraining = True
         try:
-            train_script = os.path.join(ROOT_DIR, "ml", "train.py")
-            subprocess.run(
-                [sys.executable, train_script],
-                check=True, cwd=ROOT_DIR
-            )
-            _reload_artefacts()
+            _run_training()
         except Exception as exc:
-            print(f"❌ Retrain failed: {exc}")
+            print(f"❌ Manual retrain failed: {exc}")
         finally:
             _retraining = False
 
@@ -238,8 +330,8 @@ def retrain(background_tasks: BackgroundTasks):
 
 @app.get("/retrain/status")
 def retrain_status():
-    return {"retraining": _retraining}
+    return {"retraining": _retraining, "learning": _learning}
 
-# ── Serve static files (must be last) ───────────────────────────────────────────
+# ── Static files ─────────────────────────────────────────────────────────────────
 if os.path.exists(PUBLIC_DIR):
     app.mount("/", StaticFiles(directory=PUBLIC_DIR, html=True), name="static")
