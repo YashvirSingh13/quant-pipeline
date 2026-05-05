@@ -1107,7 +1107,31 @@ async function fetchLive(){
     Object.entries(d.features||{}).forEach(([k,v])=>setField(k,v));
     renderFeatTable(d.features,d.last_price,d.as_of);
     showSignal(d,ticker);
-    if(d.trade_levels) renderTradeCard(d.trade_levels); else renderTradeCard(null);
+    // Show trade card — use trade_levels from server, or build basic one from signal+price
+    if(d.trade_levels) {
+      renderTradeCard(d.trade_levels);
+    } else if(d.signal && d.signal !== "NEUTRAL" && d.last_price) {
+      // Minimal fallback if server didn't return trade_levels
+      const atr = d.features?.ATR || d.last_price * 0.015;
+      const risk = atr * 1.5;
+      const isBuy = d.signal === "BUY";
+      renderTradeCard({
+        signal: d.signal,
+        entry_low: +(d.last_price * 0.997).toFixed(2),
+        entry_high: +(d.last_price * 1.003).toFixed(2),
+        entry_mid: +d.last_price.toFixed(2),
+        stop_loss: isBuy ? +(d.last_price - risk).toFixed(2) : +(d.last_price + risk).toFixed(2),
+        stop_pct: isBuy ? +(-risk/d.last_price*100).toFixed(2) : +(risk/d.last_price*100).toFixed(2),
+        target1: isBuy ? +(d.last_price + risk).toFixed(2) : +(d.last_price - risk).toFixed(2),
+        target1_pct: isBuy ? +(risk/d.last_price*100).toFixed(2) : +(-risk/d.last_price*100).toFixed(2),
+        target2: isBuy ? +(d.last_price + risk*2).toFixed(2) : +(d.last_price - risk*2).toFixed(2),
+        target2_pct: isBuy ? +(risk*2/d.last_price*100).toFixed(2) : +(-risk*2/d.last_price*100).toFixed(2),
+        time_horizon: "3–5 Days",
+        risk_reward: "1:1 & 2:1",
+      });
+    } else {
+      renderTradeCard(null);
+    }
     if(d.consensus) renderConsensus(d.consensus,d.engines);
     if(d.shap&&d.shap.length>0) renderSHAP(d.shap);
     if(d.fundamentals) renderFundamentals(d.fundamentals);
