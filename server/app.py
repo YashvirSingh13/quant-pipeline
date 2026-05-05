@@ -28,6 +28,7 @@ from sklearn.preprocessing import LabelEncoder
 
 # Local modules
 sys.path.insert(0, ROOT_DIR if 'ROOT_DIR' in dir() else os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 # ── Paths ───────────────────────────────────────────────────────────────────────
@@ -367,10 +368,11 @@ def _earnings_season(dt) -> int:
     )
 
 # ── Live feature computation ──────────────────────────────────────────────────────
-def _live_features(ticker: str) -> dict:
+def _live_features(ticker: str, df=None) -> dict:
     # Need ~14 months for MA200 + 52W features
-    df = yf.download(ticker, period="14mo", interval="1d",
-                     auto_adjust=True, progress=False)
+    if df is None:
+        df = yf.download(ticker, period="14mo", interval="1d",
+                         auto_adjust=True, progress=False)
     if df.empty or len(df) < 60:
         raise ValueError(f"No data found for '{ticker}'.")
 
@@ -497,45 +499,114 @@ def predict_manual(body: PredictBody):
 
 @app.get("/live")
 def predict_live(ticker: str):
+    # ── Step 1: Fetch stock data ONCE — shared across all engines ─────────────
+    df = yf.download(ticker, period="14mo", interval="1d",
+                     auto_adjust=True, progress=False)
+    if df is None or df.empty or len(df) < 60:
+        raise HTTPException(status_code=404, detail=f"No data found for '{ticker}'.")
+
+    # ── Step 2: Compute technical features ───────────────────────────────────
     try:
-        feats = _live_features(ticker)
+        feats = _live_features(ticker, df=df)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
+    # ── Step 3: XGBoost prediction ────────────────────────────────────────────
     try:
-        result = _run_predict(ticker, feats)
+        ml_result = _run_predict(ticker, feats)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
+    # ── Step 4: Run all parallel engines concurrently ─────────────────────────
+    from engines import mean_reversion, multi_timeframe, sentiment
+    from engines import volatility_regime, fundamental_rank, fusion
+
+    def _safe(fn, *args, **kwargs):
+        try:    return fn(*args, **kwargs)
+        except Exception as e:
+            name = getattr(fn, "__module__", "unknown").split(".")[-1]
+            print(f"⚠  Engine {name} failed: {e}")
+            return {"engine": name, "signal": "NEUTRAL", "score": 0.5,
+                    "detail": str(e)}
+
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        fut_mr  = ex.submit(_safe, mean_reversion.run, ticker, df)
+        fut_mtf = ex.submit(_safe, multi_timeframe.run, ticker, df)
+        fut_sen = ex.submit(_safe, sentiment.run, ticker)
+        fut_vix = ex.submit(_safe, volatility_regime.run)
+        fut_fun = ex.submit(_safe, fundamental_rank.run, ticker,
+                            SECTOR_MAP, SECTOR_BENCHMARKS)
+
+        mr_res  = fut_mr.result(timeout=12)
+        mtf_res = fut_mtf.result(timeout=12)
+        sen_res = fut_sen.result(timeout=12)
+        vix_res = fut_vix.result(timeout=12)
+        fun_res = fut_fun.result(timeout=12)
+
+    # Attach engine name tag to XGBoost result for fusion
+    xgb_for_fusion = {
+        "engine": "xgboost",
+        "signal": ml_result["signal"],
+        "score":  ml_result["probability"] / 100,
+        "detail": f"XGBoost prob {ml_result['probability']}%",
+    }
+
+    # ── Step 5: Fuse all signals ──────────────────────────────────────────────
+    vix_multiplier = vix_res.get("confidence_multiplier", 1.0)
+    consensus = fusion.fuse(
+        [xgb_for_fusion, mr_res, mtf_res, sen_res, fun_res],
+        vix_multiplier=vix_multiplier
+    )
+    # Inject vix engine into consensus breakdown for display
+    consensus["vix_engine"] = vix_res
+
+    # ── Step 6: Register stock + auto-retrain if new ──────────────────────────
     is_new = _register_stock(ticker)
     if is_new:
         _schedule_auto_retrain()
 
-    result["features"]     = {k: v for k, v in feats.items() if not k.startswith("_")}
-    result["last_price"]   = feats["_last_price"]
-    result["as_of"]        = feats["_as_of"]
-    result["new_stock"]    = is_new
-    result["learning"]     = is_new or _learning
-    result["total_stocks"] = len(_load_known_stocks())
-
-    # Fundamental scorecard
-    try:
-        result["fundamentals"] = _compute_fundamentals(ticker, feats)
-    except Exception as exc:
-        print(f"⚠  Fundamentals failed for {ticker}: {exc}")
-        result["fundamentals"] = None
-
-    # SHAP explanation — which features drove this signal
+    # ── Step 7: SHAP explanation ──────────────────────────────────────────────
+    shap_result = []
     try:
         from ml.explain import explain_prediction
         model_used, feat_list, _ = _get_model_for_ticker(ticker)
         clean_feats = {k: v for k, v in feats.items() if not k.startswith("_")}
-        result["shap"] = explain_prediction(clean_feats, model_used, feat_list)
+        shap_result = explain_prediction(clean_feats, model_used, feat_list)
     except Exception as exc:
         print(f"⚠  SHAP failed: {exc}")
-        result["shap"] = []
 
-    return result
+    # ── Step 8: Fundamentals (re-use yf.info already fetched in fundamental engine) ─
+    fundamentals = None
+    try:
+        fundamentals = _compute_fundamentals(ticker, feats)
+    except Exception as exc:
+        print(f"⚠  Fundamentals failed: {exc}")
+
+    # ── Build response ────────────────────────────────────────────────────────
+    return {
+        # ML signal (from XGBoost alone)
+        **ml_result,
+        # Fusion signal (all engines combined) — this is the primary signal
+        "consensus":      consensus,
+        # Data
+        "features":       {k: v for k, v in feats.items() if not k.startswith("_")},
+        "last_price":     feats["_last_price"],
+        "as_of":          feats["_as_of"],
+        # Individual engine results (for display)
+        "engines": {
+            "mean_reversion":   mr_res,
+            "multi_timeframe":  mtf_res,
+            "sentiment":        sen_res,
+            "volatility_regime": vix_res,
+            "fundamental_rank": fun_res,
+        },
+        # Extras
+        "shap":           shap_result,
+        "fundamentals":   fundamentals,
+        "new_stock":      is_new,
+        "learning":       is_new or _learning,
+        "total_stocks":   len(_load_known_stocks()),
+    }
 
 
 @app.get("/backtest")
