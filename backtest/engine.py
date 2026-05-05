@@ -101,13 +101,32 @@ def run_backtest(ticker, model, label_encoder, metadata, sector_map, period="3y"
 
     feat_df = _build_features(raw, nc, nm, nr, ticker_code, sector_code)
 
-    # Select correct feature list from metadata
-    g_feats = metadata.get("global_features")
-    s_feats = metadata.get("stock_features")
+    # ── Definitive feature-name fix ───────────────────────────────────────────
+    # Strip spaces from the DataFrame — handles pandas MultiIndex quirk
+    feat_df.columns = [str(col).strip() for col in feat_df.columns]
+
+    # Use the MODEL's own booster feature names as the single source of truth.
+    # Strip spaces from them too (older models have trailing spaces).
+    # Select columns from feat_df in exactly that order.
+    # Pass as .values (numpy array) — bypasses XGBoost name validation entirely.
     try:
-        probs = model.predict_proba(feat_df[g_feats])[:,1]
+        booster_feats = [f.strip() for f in model.get_booster().feature_names]
     except Exception:
-        probs = model.predict_proba(feat_df[s_feats])[:,1]
+        # Booster feature names unavailable — fall back to metadata
+        g_feats = [f.strip() for f in (metadata.get("global_features") or [])]
+        s_feats = [f.strip() for f in (metadata.get("stock_features")  or [])]
+        booster_feats = g_feats or s_feats or list(feat_df.columns)
+
+    # Keep only features that exist in our computed feat_df (same order as model)
+    available_feats = [f for f in booster_feats if f in feat_df.columns]
+
+    if len(available_feats) == 0:
+        raise ValueError(f"No matching features between model and computed features. "
+                         f"Model expects: {booster_feats[:5]}... "
+                         f"DataFrame has: {list(feat_df.columns)[:5]}...")
+
+    # numpy array → no column names → XGBoost skips all name validation
+    probs = model.predict_proba(feat_df[available_feats].values)[:,1]
 
     buy_thr  = metadata.get("buy_threshold",  0.65)
     sell_thr = metadata.get("sell_threshold", 0.35)
