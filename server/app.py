@@ -497,6 +497,143 @@ def predict_manual(body: PredictBody):
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
+
+# ── Trading Horizon Recommendation ──────────────────────────────────────────────
+def _compute_trading_horizon(feats: dict, mtf_result: dict,
+                              fun_result: dict, vix_result: dict) -> dict:
+    """
+    Determines which trading horizons this stock is currently suited for,
+    based on technical features, timeframe alignment, fundamentals and VIX.
+
+    IMPORTANT: The model is trained on daily data. Intraday is flagged but
+    marked as 'low confidence' since tick-level data was not used in training.
+    """
+    rsi        = feats.get("RSI", 50)
+    vol_spike  = feats.get("Volume_Spike", 1.0)
+    atr        = feats.get("ATR", 0)
+    macd_hist  = feats.get("MACD_Hist", 0)
+    ma_cross   = feats.get("MA_Cross", 0)
+    bb_width   = feats.get("BB_Width", 0.05)
+    hi52w      = feats.get("High52W_Pct", 0.95)
+    regime     = feats.get("Market_Regime", 1)
+    earn_szn   = feats.get("Earnings_Season", 0)
+
+    daily_trend  = mtf_result.get("daily",   "UNKNOWN")
+    weekly_trend = mtf_result.get("weekly",  "UNKNOWN")
+    monthly_trend= mtf_result.get("monthly", "UNKNOWN")
+    mom_1m       = mtf_result.get("mom_1m",  0)
+    mom_3m       = mtf_result.get("mom_3m",  0)
+
+    fund_score   = fun_result.get("score",  0.5)
+    vix          = vix_result.get("vix",    18)
+    vix_regime   = vix_result.get("regime", "NORMAL")
+
+    horizons = []
+
+    # ── Intraday ──────────────────────────────────────────────────────────────
+    # High ATR + volume spike = intraday volatility present
+    # BUT: model is daily — always low confidence for intraday
+    intraday_signals = []
+    if vol_spike > 2.0:  intraday_signals.append(f"Volume spike {vol_spike:.1f}x")
+    if rsi < 32:         intraday_signals.append(f"RSI oversold ({rsi:.0f})")
+    if rsi > 68:         intraday_signals.append(f"RSI overbought ({rsi:.0f})")
+    if bb_width > 0.12:  intraday_signals.append("Wide Bollinger bands")
+    if vix > 22:         intraday_signals.append(f"Elevated VIX ({vix:.1f})")
+
+    horizons.append({
+        "horizon":     "Intraday",
+        "icon":        "⚡",
+        "suitable":    len(intraday_signals) >= 2,
+        "confidence":  "Low",
+        "reasons":     intraday_signals[:2] if intraday_signals else ["Low intraday volatility indicators"],
+        "disclaimer":  "Model trained on daily data — intraday precision limited",
+        "color":       "warn",
+    })
+
+    # ── Short-term: 3–5 days ──────────────────────────────────────────────────
+    short_score = 0
+    short_reasons = []
+    if macd_hist > 0:
+        short_score += 2; short_reasons.append("MACD histogram positive")
+    if "UP" in daily_trend:
+        short_score += 2; short_reasons.append(f"Daily trend: {daily_trend}")
+    if vol_spike > 1.3:
+        short_score += 1; short_reasons.append(f"Above-avg volume ({vol_spike:.1f}x)")
+    if 40 < rsi < 65:
+        short_score += 1; short_reasons.append(f"RSI in momentum zone ({rsi:.0f})")
+    if earn_szn:
+        short_score += 1; short_reasons.append("Earnings season — catalyst potential")
+
+    horizons.append({
+        "horizon":     "Short-term",
+        "icon":        "📈",
+        "period":      "3–5 days",
+        "suitable":    short_score >= 4,
+        "confidence":  "High" if short_score >= 5 else "Medium" if short_score >= 3 else "Low",
+        "reasons":     short_reasons[:3],
+        "color":       "accent",
+    })
+
+    # ── Swing: 1–3 weeks ─────────────────────────────────────────────────────
+    swing_score = 0
+    swing_reasons = []
+    if "UP" in weekly_trend:
+        swing_score += 3; swing_reasons.append(f"Weekly trend: {weekly_trend}")
+    if ma_cross > 0:
+        swing_score += 2; swing_reasons.append("MA50 above MA200 (golden cross zone)")
+    if mom_3m > 5:
+        swing_score += 1; swing_reasons.append(f"3M momentum +{mom_3m:.1f}%")
+    if hi52w < 0.90:
+        swing_score += 1; swing_reasons.append("Below 52W high — room to run")
+    if vix_regime in ("NORMAL", "LOW_VOLATILITY"):
+        swing_score += 1; swing_reasons.append("Calm market regime")
+
+    horizons.append({
+        "horizon":     "Swing",
+        "icon":        "🔄",
+        "period":      "1–3 weeks",
+        "suitable":    swing_score >= 4,
+        "confidence":  "High" if swing_score >= 6 else "Medium" if swing_score >= 3 else "Low",
+        "reasons":     swing_reasons[:3],
+        "color":       "buy" if swing_score >= 4 else "dim",
+    })
+
+    # ── Long-term: months+ ───────────────────────────────────────────────────
+    long_score = 0
+    long_reasons = []
+    if "UP" in monthly_trend:
+        long_score += 3; long_reasons.append(f"Monthly trend: {monthly_trend}")
+    if regime == 1:
+        long_score += 2; long_reasons.append("Bull market regime (Nifty above 200MA)")
+    if fund_score > 0.60:
+        long_score += 2; long_reasons.append(f"Strong fundamentals (score {fund_score:.2f})")
+    if ma_cross > 0 and mom_3m > 0:
+        long_score += 1; long_reasons.append("Positive trend + momentum")
+    if vix_regime == "LOW_VOLATILITY":
+        long_score += 1; long_reasons.append("Low volatility — stable environment")
+
+    horizons.append({
+        "horizon":     "Long-term",
+        "icon":        "🏦",
+        "period":      "Months+",
+        "suitable":    long_score >= 4,
+        "confidence":  "High" if long_score >= 7 else "Medium" if long_score >= 4 else "Low",
+        "reasons":     long_reasons[:3],
+        "color":       "buy" if long_score >= 4 else "dim",
+    })
+
+    # ── Best recommendation ───────────────────────────────────────────────────
+    suitable = [h for h in horizons if h["suitable"]]
+    best     = max(horizons, key=lambda h: (h["suitable"], h.get("confidence","Low") == "High"))
+
+    return {
+        "horizons":    horizons,
+        "recommended": [h["horizon"] for h in suitable],
+        "primary":     best["horizon"] if suitable else "Short-term",
+        "summary":     f"Best suited for {', '.join(h['horizon'] for h in suitable)}" if suitable
+                       else "Mixed signals — no strong horizon bias currently",
+    }
+
 @app.get("/live")
 def predict_live(ticker: str):
     # ── Step 1: Fetch stock data ONCE — shared across all engines ─────────────
@@ -575,7 +712,15 @@ def predict_live(ticker: str):
     except Exception as exc:
         print(f"⚠  SHAP failed: {exc}")
 
-    # ── Step 8: Fundamentals (re-use yf.info already fetched in fundamental engine) ─
+    # ── Step 8: Trading Horizon ──────────────────────────────────────────────
+    try:
+        horizon = _compute_trading_horizon(feats, mtf_res, fun_res, vix_res)
+    except Exception as exc:
+        print(f"⚠  Horizon failed: {exc}")
+        horizon = {"horizons": [], "recommended": [], "primary": "Short-term",
+                   "summary": "Could not compute"}
+
+    # ── Step 9: Fundamentals (re-use yf.info already fetched in fundamental engine) ─
     fundamentals = None
     try:
         fundamentals = _compute_fundamentals(ticker, feats)
@@ -603,6 +748,7 @@ def predict_live(ticker: str):
         # Extras
         "shap":           shap_result,
         "fundamentals":   fundamentals,
+        "horizon":        horizon,
         "new_stock":      is_new,
         "learning":       is_new or _learning,
         "total_stocks":   len(_load_known_stocks()),
