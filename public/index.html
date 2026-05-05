@@ -4,7 +4,55 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="dark">
-<style>html,body{background:#020408!important}</style>
+<style>html,body{background:#020408!important}
+  /* ── Fundamentals panel ── */
+  .scorecard-grid { display:flex; flex-direction:column; gap:0; }
+  .scorecard-item {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:11px 14px; border-bottom:1px solid rgba(0,200,255,.06);
+    transition:background .15s;
+  }
+  .scorecard-item:last-child { border-bottom:none; }
+  .scorecard-item:hover { background:rgba(0,200,255,.03); }
+  .sc-left { display:flex; flex-direction:column; gap:3px; }
+  .sc-name { font-family:var(--display); font-size:10px; font-weight:600; letter-spacing:1.5px; color:var(--text); text-transform:uppercase; }
+  .sc-note { font-size:10px; color:var(--dim); }
+  .sc-badge {
+    font-family:var(--display); font-size:9px; font-weight:700;
+    letter-spacing:1.5px; padding:3px 10px; border-radius:3px; white-space:nowrap;
+  }
+  .sc-badge.good  { background:rgba(0,255,170,.12); color:var(--buy); border:1px solid rgba(0,255,170,.3); }
+  .sc-badge.avg   { background:rgba(255,204,0,.1);  color:var(--warn); border:1px solid rgba(255,204,0,.3); }
+  .sc-badge.high  { background:rgba(255,204,0,.1);  color:var(--warn); border:1px solid rgba(255,204,0,.3); }
+  .sc-badge.low   { background:rgba(255,45,85,.1);  color:var(--sell); border:1px solid rgba(255,45,85,.3); }
+  .sc-badge.overbought { background:rgba(255,45,85,.1); color:var(--sell); border:1px solid rgba(255,45,85,.3); }
+  .sc-badge.neutral { background:rgba(255,204,0,.1); color:var(--warn); border:1px solid rgba(255,204,0,.3); }
+  .sc-badge.na    { background:rgba(255,255,255,.05); color:var(--dim); border:1px solid var(--border); }
+
+  .metrics-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+  .metric-item { background:rgba(0,0,0,.4); border:1px solid var(--border); border-radius:4px; padding:9px 12px; }
+  .metric-item .m-label { font-family:var(--display); font-size:8px; letter-spacing:1.2px; text-transform:uppercase; color:var(--dim); margin-bottom:4px; }
+  .metric-item .m-val   { font-family:var(--mono); font-size:13px; font-weight:500; color:var(--text); }
+  .metric-item .m-sect  { font-size:10px; color:var(--dim); margin-top:2px; }
+  .metric-item .m-val.positive { color:var(--buy); }
+  .metric-item .m-val.negative { color:var(--sell); }
+
+  .red-flags-section { padding:12px 14px; }
+  .rf-header { font-family:var(--display); font-size:9px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:var(--dim); display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  .rf-badge { font-family:var(--display); font-size:9px; font-weight:700; letter-spacing:1px; padding:2px 8px; border-radius:3px; }
+  .rf-badge.Low    { background:rgba(0,255,170,.1); color:var(--buy); border:1px solid rgba(0,255,170,.3); }
+  .rf-badge.Medium { background:rgba(255,204,0,.1); color:var(--warn); border:1px solid rgba(255,204,0,.3); }
+  .rf-badge.High   { background:rgba(255,45,85,.1); color:var(--sell); border:1px solid rgba(255,45,85,.3); }
+  .rf-item { display:flex; align-items:flex-start; gap:8px; font-size:11px; color:var(--sell); margin-bottom:6px; }
+  .rf-item::before { content:"⚠"; flex-shrink:0; }
+  .rf-none { font-size:11px; color:var(--buy); display:flex; align-items:center; gap:6px; }
+  .rf-none::before { content:"✓"; }
+  .fund-divider { height:1px; background:var(--border); margin:0 14px; }
+  .metrics-section { padding:12px 14px; }
+  .metrics-section-label { font-family:var(--display); font-size:8px; letter-spacing:1.5px; text-transform:uppercase; color:var(--dim); margin-bottom:10px; display:flex; align-items:center; gap:8px; }
+  .metrics-section-label::after { content:''; flex:1; height:1px; background:linear-gradient(90deg,rgba(0,200,255,.2),transparent); }
+  .sector-note { font-family:var(--mono); font-size:10px; color:var(--dim); padding:8px 14px 0; }
+</style>
 <title>QuantPipeline</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;600;700;900&family=Exo+2:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -463,6 +511,26 @@ select, input, button { font-family:var(--mono); font-size:13px; outline:none; }
       </div>
     </div>
 
+
+    <!-- Fundamentals panel -->
+    <div class="panel" id="fund-panel" style="display:none">
+      <div class="panel-header">◈ Fundamental Scorecard</div>
+      <!-- Scorecard -->
+      <div class="scorecard-grid" id="scorecard-grid"></div>
+      <div class="fund-divider"></div>
+      <!-- Key Metrics -->
+      <div class="metrics-section">
+        <div class="metrics-section-label">Key Metrics</div>
+        <div class="metrics-grid" id="metrics-grid"></div>
+        <div class="sector-note" id="sector-note"></div>
+      </div>
+      <div class="fund-divider"></div>
+      <!-- Red Flags -->
+      <div class="red-flags-section">
+        <div class="rf-header">Red Flags <span class="rf-badge" id="rf-badge">Low</span></div>
+        <div id="rf-list"></div>
+      </div>
+    </div>
     <div class="panel" id="meta-panel" style="display:none">
       <div class="panel-header">◈ Model Info</div>
       <div class="panel-body"><div class="info-grid" id="meta-grid"></div></div>
@@ -538,7 +606,9 @@ function clearFields(){
   ["RSI","MA50","MA200","MA_Cross","Volatility","MACD","MACD_Signal","MACD_Hist","BB_Width","Volume_Log"].forEach(f=>{
     const el=document.getElementById("f-"+f); el.value=""; el.classList.remove("populated");
   });
-  hideResult(); document.getElementById("feat-panel").style.display="none";
+  hideResult();
+  document.getElementById("feat-panel").style.display="none";
+  document.getElementById("fund-panel").style.display="none";
 }
 function getFields(){
   const names=["RSI","MA50","MA200","MA_Cross","Volatility","MACD","MACD_Signal","MACD_Hist","BB_Width","Volume_Log"];
@@ -657,13 +727,93 @@ async function showStocksInfo(){
   }catch(e){ toast("Could not fetch stock list","error"); }
 }
 
+
+// ── Fundamentals render ────────────────────────────────────────────────────────
+const SCORECARD_ORDER = [
+  ["performance",   "Performance"],
+  ["valuation",     "Valuation"],
+  ["growth",        "Growth"],
+  ["profitability", "Profitability"],
+  ["entry_point",   "Entry Point"],
+];
+
+function badgeClass(rating) {
+  const r = (rating||"").toLowerCase();
+  if (r === "good" || r === "high")    return r === "high" ? "high" : "good";
+  if (r === "avg")                     return "avg";
+  if (r === "low" || r === "overbought") return r;
+  if (r === "neutral")                 return "neutral";
+  return "na";
+}
+
+function renderFundamentals(fund) {
+  if (!fund) return;
+  document.getElementById("fund-panel").style.display = "block";
+
+  // Scorecard
+  const sc = fund.scorecard || {};
+  document.getElementById("scorecard-grid").innerHTML = SCORECARD_ORDER.map(([key, label]) => {
+    const item = sc[key] || {};
+    const bc   = badgeClass(item.rating);
+    return `<div class="scorecard-item">
+      <div class="sc-left">
+        <div class="sc-name">${label}</div>
+        <div class="sc-note">${item.note || "—"}</div>
+      </div>
+      <div class="sc-badge ${bc}">${item.rating || "N/A"}</div>
+    </div>`;
+  }).join("");
+
+  // Key Metrics
+  const m = fund.key_metrics || {};
+  const s = fund.sector || {};
+  const fmtPct = v => v != null ? v.toFixed(2) + "%" : "—";
+  const fmtNum = v => v != null ? v.toFixed(2) : "—";
+  const retClass = v => v == null ? "" : v >= 0 ? "positive" : "negative";
+
+  const metrics = [
+    { label:"PE Ratio",    val:fmtNum(m.pe_ratio),       sect:`Sector: ${s.pe||"—"}` },
+    { label:"PB Ratio",    val:fmtNum(m.pb_ratio),       sect:`Sector: ${s.pb||"—"}` },
+    { label:"Div. Yield",  val:fmtPct(m.div_yield),      sect:`Sector: ${s.div_yield||"—"}%` },
+    { label:"ROE",         val:fmtPct(m.roe),            sect:"Return on Equity", cls:m.roe>=15?"positive":m.roe<8?"negative":"" },
+    { label:"Net Margin",  val:fmtPct(m.profit_margin),  sect:"Profit Margin",    cls:m.profit_margin>=10?"positive":m.profit_margin<0?"negative":"" },
+    { label:"Rev Growth",  val:fmtPct(m.revenue_growth), sect:"YoY Revenue",      cls:retClass(m.revenue_growth) },
+    { label:"Earn Growth", val:fmtPct(m.earnings_growth),sect:"YoY Earnings",     cls:retClass(m.earnings_growth) },
+    { label:"Debt/Equity", val:m.debt_equity!=null?m.debt_equity.toFixed(1)+"%":"—", sect:"D/E Ratio", cls:m.debt_equity>150?"negative":"" },
+    { label:"1Y Return",   val:m.stock_1y_return!=null?m.stock_1y_return.toFixed(1)+"%":"—",
+                           sect:`Nifty: ${m.nifty_1y_return!=null?m.nifty_1y_return.toFixed(1)+"%":"—"}`, cls:retClass(m.stock_1y_return) },
+  ];
+
+  document.getElementById("metrics-grid").innerHTML = metrics.map(({label,val,sect,cls=""})=>
+    `<div class="metric-item">
+      <div class="m-label">${label}</div>
+      <div class="m-val ${cls}">${val}</div>
+      <div class="m-sect">${sect}</div>
+    </div>`
+  ).join("");
+
+  document.getElementById("sector-note").textContent =
+    s.name ? `Sector: ${s.name}` : "";
+
+  // Red Flags
+  const rfl  = fund.red_flags || [];
+  const rfLv = fund.red_flag_level || "Low";
+  document.getElementById("rf-badge").textContent  = rfLv;
+  document.getElementById("rf-badge").className    = `rf-badge ${rfLv}`;
+  document.getElementById("rf-list").innerHTML = rfl.length
+    ? rfl.map(f=>`<div class="rf-item">${f}</div>`).join("")
+    : `<div class="rf-none">No red flags found</div>`;
+}
+
 // ── Live fetch ────────────────────────────────────────────────────────────────
 async function fetchLive(){
   const ticker=getTickerSymbol();
   if(!ticker){ document.getElementById("ticker-wrap").classList.add("invalid"); toast("Enter a stock symbol first","error"); return; }
   document.getElementById("ticker-wrap").classList.remove("invalid");
   setLoading("btn-live","live-icon",true,"↻");
-  hideResult(); document.getElementById("feat-panel").style.display="none";
+  hideResult();
+  document.getElementById("feat-panel").style.display="none";
+  document.getElementById("fund-panel").style.display="none";
   try{
     const r=await fetch(`${API}/live?ticker=${encodeURIComponent(ticker)}`);
     const d=await r.json();
@@ -683,6 +833,7 @@ async function fetchLive(){
       toast(`New stock! ${ticker} added to training registry. Model will retrain in ~30s.`,"warn");
     } else {
       toast(`Signal ready — ${ticker}`);
+    if (d.fundamentals) renderFundamentals(d.fundamentals);
     }
 
     document.getElementById("stocks-count").textContent=d.total_stocks||"—";
