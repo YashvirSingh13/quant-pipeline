@@ -4,7 +4,62 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="dark">
-<style>html,body{background:#020408!important}</style>
+<style>html,body{background:#020408!important}
+  /* ── Trade Recommendation Card ── */
+  .trade-card {
+    position:relative; border-radius:var(--radius);
+    overflow:hidden; backdrop-filter:blur(10px);
+  }
+  .trade-card::before { content:''; position:absolute; top:0;left:0;right:0;height:1px; background:linear-gradient(90deg,transparent,rgba(0,200,255,.5),transparent); }
+  .trade-card.buy  { background:rgba(0,255,170,.06); border:1px solid rgba(0,255,170,.4); }
+  .trade-card.sell { background:rgba(255,45,85,.06);  border:1px solid rgba(255,45,85,.4); }
+
+  .trade-header {
+    text-align:center; padding:18px 20px 14px;
+    border-bottom:1px solid rgba(255,255,255,.06);
+  }
+  .trade-signal-word {
+    font-family:var(--display); font-weight:900;
+    font-size:42px; letter-spacing:8px; line-height:1;
+    animation:signal-in .4s cubic-bezier(.17,.67,.29,1.27) both;
+  }
+  .trade-card.buy  .trade-signal-word { color:var(--buy); text-shadow:0 0 30px rgba(0,255,170,.5); }
+  .trade-card.sell .trade-signal-word { color:var(--sell); text-shadow:0 0 30px rgba(255,45,85,.5); }
+
+  .trade-grid {
+    display:grid; grid-template-columns:repeat(4,1fr);
+    gap:0;
+  }
+  @media(max-width:600px){ .trade-grid{grid-template-columns:repeat(2,1fr)} }
+  .trade-cell {
+    padding:16px 18px;
+    border-right:1px solid rgba(255,255,255,.06);
+    border-top:1px solid rgba(255,255,255,.06);
+  }
+  .trade-cell:last-child { border-right:none; }
+  .trade-cell-label {
+    font-family:var(--display); font-size:9px; font-weight:600;
+    letter-spacing:1.5px; text-transform:uppercase; color:var(--dim);
+    margin-bottom:8px;
+  }
+  .trade-cell-value {
+    font-family:var(--display); font-weight:700;
+    font-size:17px; letter-spacing:0.5px; color:var(--text);
+  }
+  .trade-cell-value.stop  { color:var(--sell); }
+  .trade-cell-value.target{ color:var(--buy);  }
+  .trade-cell-sub {
+    font-family:var(--mono); font-size:11px; color:var(--dim); margin-top:3px;
+  }
+  .trade-cell-sub.neg { color:var(--sell); }
+  .trade-cell-sub.pos { color:var(--buy);  }
+  .trade-disclaimer {
+    text-align:center; padding:8px 20px 10px;
+    font-family:var(--mono); font-size:10px; color:var(--dim);
+    border-top:1px solid rgba(255,255,255,.05);
+  }
+
+</style>
 <title>QuantPipeline</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
@@ -582,6 +637,10 @@ select,input,button { font-family:var(--mono);font-size:15px;outline:none; }
     </div>
   </div>
 
+
+  <!-- 2b. Trade Recommendation Card -->
+  <div id="trade-card" style="display:none"></div>
+
   <!-- 3. Trading Horizon -->
   <div class="panel" id="horizon-panel" style="display:none">
     <div class="panel-header">◈ Trading Horizon Recommendation</div>
@@ -754,7 +813,7 @@ function clearFields(){
 }
 function clearAll(){
   clearFields(); hideResult();
-  ["feat-panel","fund-panel","shap-panel","consensus-panel","horizon-panel","bt-panel"].forEach(id=>{
+  ["feat-panel","fund-panel","shap-panel","consensus-panel","horizon-panel","bt-panel","trade-card"].forEach(id=>{
     document.getElementById(id).style.display="none";
   });
   document.getElementById("feat-panel").style.display="none";
@@ -800,6 +859,47 @@ function hideResult(){
   document.getElementById("signal-card").className="signal-card";
   document.getElementById("signal-placeholder").style.display="block";
   document.getElementById("signal-result").style.display="none";
+}
+
+
+// ── Trade Recommendation Card ─────────────────────────────────────────────────
+function renderTradeCard(tl) {
+  const el = document.getElementById("trade-card");
+  if (!tl) { el.style.display = "none"; return; }
+
+  const cls = tl.signal === "BUY" ? "buy" : "sell";
+  const fmt = v => `₹ ${v.toLocaleString("en-IN")}`;
+
+  el.className = `trade-card ${cls}`;
+  el.style.display = "block";
+  el.innerHTML = `
+    <div class="trade-header">
+      <div class="trade-signal-word">${tl.signal}</div>
+    </div>
+    <div class="trade-grid">
+      <div class="trade-cell">
+        <div class="trade-cell-label">Entry Price Range</div>
+        <div class="trade-cell-value">${fmt(tl.entry_low)} – ${fmt(tl.entry_high)}</div>
+        <div class="trade-cell-sub">Around ${fmt(tl.entry_mid)}</div>
+      </div>
+      <div class="trade-cell">
+        <div class="trade-cell-label">Stop Loss</div>
+        <div class="trade-cell-value stop">${fmt(tl.stop_loss)}</div>
+        <div class="trade-cell-sub neg">${tl.stop_pct}% risk</div>
+      </div>
+      <div class="trade-cell">
+        <div class="trade-cell-label">Target(s)</div>
+        <div class="trade-cell-value target">${fmt(tl.target1)}, ${fmt(tl.target2)}</div>
+        <div class="trade-cell-sub pos">+${tl.target1_pct}% / +${tl.target2_pct}%</div>
+      </div>
+      <div class="trade-cell">
+        <div class="trade-cell-label">Time Horizon</div>
+        <div class="trade-cell-value">${tl.time_horizon}</div>
+        <div class="trade-cell-sub">R/R: ${tl.risk_reward}</div>
+      </div>
+    </div>
+    <div class="trade-disclaimer">⚠ For informational purposes only. Not financial advice. Always use your own judgment.</div>
+  `;
 }
 
 // ── Trading Horizon ───────────────────────────────────────────────────────────
@@ -1007,6 +1107,7 @@ async function fetchLive(){
     Object.entries(d.features||{}).forEach(([k,v])=>setField(k,v));
     renderFeatTable(d.features,d.last_price,d.as_of);
     showSignal(d,ticker);
+    if(d.trade_levels) renderTradeCard(d.trade_levels); else renderTradeCard(null);
     if(d.consensus) renderConsensus(d.consensus,d.engines);
     if(d.shap&&d.shap.length>0) renderSHAP(d.shap);
     if(d.fundamentals) renderFundamentals(d.fundamentals);
