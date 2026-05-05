@@ -59,6 +59,148 @@ SECTOR_MAP = {
     "ASIANPAINT.NS":7,"PIDILITIND.NS":7, "TITAN.NS":7,     "ULTRACEMCO.NS":7,
 }
 
+# ── Sector benchmarks (approximate NSE averages) ────────────────────────────────
+# Used to contextualise individual stock PE/PB vs sector
+SECTOR_BENCHMARKS = {
+    0: {"name": "Banking & Finance",    "pe": 18.0, "pb": 2.5,  "div_yield": 1.2},
+    1: {"name": "Information Technology","pe": 28.0, "pb": 7.0,  "div_yield": 2.0},
+    2: {"name": "Automobile",           "pe": 22.0, "pb": 3.5,  "div_yield": 0.8},
+    3: {"name": "Energy & Oil",         "pe": 12.0, "pb": 1.8,  "div_yield": 3.5},
+    4: {"name": "FMCG",                 "pe": 45.0, "pb": 12.0, "div_yield": 1.5},
+    5: {"name": "Infrastructure",       "pe": 25.0, "pb": 3.0,  "div_yield": 1.0},
+    6: {"name": "Pharmaceuticals",      "pe": 32.0, "pb": 5.0,  "div_yield": 0.5},
+    7: {"name": "Others",               "pe": 25.0, "pb": 3.5,  "div_yield": 1.0},
+}
+
+def _compute_fundamentals(ticker: str, feats: dict) -> dict:
+    """
+    Fetch fundamental data from yfinance and compute a scorecard.
+    Returns scorecard ratings, key metrics, and red flags.
+    All values are best-effort — missing data is handled gracefully.
+    """
+    sector_code = SECTOR_MAP.get(ticker, 7)
+    bench       = SECTOR_BENCHMARKS[sector_code]
+
+    try:
+        info = yf.Ticker(ticker).info
+    except Exception:
+        info = {}
+
+    # ── Raw values ──────────────────────────────────────────────────────────────
+    pe            = info.get("trailingPE") or info.get("forwardPE")
+    pb            = info.get("priceToBook")
+    div_yield_raw = info.get("dividendYield") or 0.0
+    div_yield     = round(div_yield_raw * 100, 2)
+    roe           = round((info.get("returnOnEquity")  or 0) * 100, 2)
+    roa           = round((info.get("returnOnAssets")  or 0) * 100, 2)
+    profit_margin = round((info.get("profitMargins")   or 0) * 100, 2)
+    rev_growth    = round((info.get("revenueGrowth")   or 0) * 100, 2)
+    earn_growth   = round((info.get("earningsGrowth")  or 0) * 100, 2)
+    debt_equity   = info.get("debtToEquity") or 0.0
+    current_ratio = info.get("currentRatio") or 0.0
+    mkt_cap       = info.get("marketCap")
+    beta          = info.get("beta")
+
+    # ── Scorecard: Valuation ────────────────────────────────────────────────────
+    if pe and bench["pe"]:
+        ratio = pe / bench["pe"]
+        if ratio < 0.8:   valuation, val_note = "Low",  "Trading at a discount to sector"
+        elif ratio > 1.3: valuation, val_note = "High", "Overvalued vs sector average"
+        else:             valuation, val_note = "Avg",  "Fairly valued vs sector"
+    else:
+        valuation, val_note = "N/A", "PE data unavailable"
+
+    # ── Scorecard: Growth ───────────────────────────────────────────────────────
+    growth_avg = (rev_growth + earn_growth) / 2 if (rev_growth or earn_growth) else 0
+    if growth_avg > 15:   growth, g_note = "High", "Strong revenue & earnings growth"
+    elif growth_avg > 5:  growth, g_note = "Avg",  "Moderate growth, in line with market"
+    elif growth_avg >= 0: growth, g_note = "Low",  "Lagging behind market in growth"
+    else:                 growth, g_note = "Low",  "Declining revenue or earnings"
+
+    # ── Scorecard: Profitability ────────────────────────────────────────────────
+    if roe > 15 and profit_margin > 10:
+        profitability, p_note = "High", "Good profitability & efficiency"
+    elif roe > 8 or profit_margin > 5:
+        profitability, p_note = "Avg",  "Average profitability metrics"
+    else:
+        profitability, p_note = "Low",  "Below-average profitability"
+
+    # ── Scorecard: Entry Point (uses technical features) ───────────────────────
+    rsi       = feats.get("RSI", 50)
+    hi52w_pct = feats.get("High52W_Pct", 0.95)
+    if rsi < 45 and hi52w_pct < 0.88:
+        entry, e_note = "Good",       "Underpriced, not in overbought zone"
+    elif rsi > 68 or hi52w_pct > 0.97:
+        entry, e_note = "Overbought", "Near 52W high or RSI elevated"
+    else:
+        entry, e_note = "Neutral",    "Neither cheap nor overbought"
+
+    # ── Scorecard: Performance (1Y vs Nifty) ───────────────────────────────────
+    try:
+        stock_hist = yf.download(ticker, period="1y", progress=False, auto_adjust=True)
+        nifty_hist = yf.download("^NSEI", period="1y", progress=False, auto_adjust=True)
+        stock_ret  = float((stock_hist["Close"].iloc[-1] / stock_hist["Close"].iloc[0] - 1) * 100)
+        nifty_ret  = float((nifty_hist["Close"].iloc[-1] / nifty_hist["Close"].iloc[0] - 1) * 100)
+        diff       = stock_ret - nifty_ret
+        if diff > 5:    performance, perf_note = "Good", f"Outperforming Nifty by {diff:.1f}%"
+        elif diff < -5: performance, perf_note = "Low",  f"Underperforming Nifty by {abs(diff):.1f}%"
+        else:           performance, perf_note = "Avg",  "In line with Nifty 50 returns"
+        stock_1y_return = round(stock_ret, 2)
+        nifty_1y_return = round(nifty_ret, 2)
+    except Exception:
+        performance, perf_note = "N/A", "Return data unavailable"
+        stock_1y_return = nifty_1y_return = None
+
+    # ── Red Flags ───────────────────────────────────────────────────────────────
+    red_flags = []
+    if debt_equity > 150:
+        red_flags.append(f"High debt-to-equity ratio ({debt_equity:.0f}%)")
+    if profit_margin < 0:
+        red_flags.append("Negative profit margins — company running at a loss")
+    if rev_growth < -5:
+        red_flags.append(f"Declining revenue ({rev_growth:.1f}% YoY)")
+    if earn_growth < -20:
+        red_flags.append(f"Sharply falling earnings ({earn_growth:.1f}% YoY)")
+    if current_ratio and current_ratio < 1.0:
+        red_flags.append(f"Low current ratio ({current_ratio:.2f}) — liquidity risk")
+    if pe and pe > bench["pe"] * 2:
+        red_flags.append(f"PE ({pe:.1f}x) is more than 2x sector average ({bench['pe']}x)")
+
+    rf_level = "High" if len(red_flags) >= 3 else "Medium" if len(red_flags) >= 1 else "Low"
+
+    return {
+        "scorecard": {
+            "performance":    {"rating": performance, "note": perf_note},
+            "valuation":      {"rating": valuation,   "note": val_note},
+            "growth":         {"rating": growth,       "note": g_note},
+            "profitability":  {"rating": profitability,"note": p_note},
+            "entry_point":    {"rating": entry,        "note": e_note},
+        },
+        "key_metrics": {
+            "pe_ratio":         round(pe, 2) if pe else None,
+            "pb_ratio":         round(pb, 2) if pb else None,
+            "div_yield":        div_yield,
+            "roe":              roe,
+            "roa":              roa,
+            "profit_margin":    profit_margin,
+            "revenue_growth":   rev_growth,
+            "earnings_growth":  earn_growth,
+            "debt_equity":      round(debt_equity, 1),
+            "current_ratio":    round(current_ratio, 2) if current_ratio else None,
+            "beta":             round(beta, 2) if beta else None,
+            "stock_1y_return":  stock_1y_return,
+            "nifty_1y_return":  nifty_1y_return,
+        },
+        "sector": {
+            "name":      bench["name"],
+            "pe":        bench["pe"],
+            "pb":        bench["pb"],
+            "div_yield": bench["div_yield"],
+        },
+        "red_flags":       red_flags,
+        "red_flag_level":  rf_level,
+    }
+
 # ── Feature lists (must match train.py exactly) ──────────────────────────────────
 STOCK_FEATURES = [
     "RSI", "MA50", "MA200", "MA_Cross", "Volatility",
@@ -371,6 +513,14 @@ def predict_live(ticker: str):
     result["new_stock"]    = is_new
     result["learning"]     = is_new or _learning
     result["total_stocks"] = len(_load_known_stocks())
+
+    # Fundamental scorecard — fetched alongside technical signal
+    try:
+        result["fundamentals"] = _compute_fundamentals(ticker, feats)
+    except Exception as exc:
+        print(f"⚠  Fundamentals fetch failed for {ticker}: {exc}")
+        result["fundamentals"] = None
+
     return result
 
 @app.get("/metadata")
