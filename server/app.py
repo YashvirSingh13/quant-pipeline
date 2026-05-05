@@ -87,11 +87,24 @@ def _reload_artefacts():
         print("✅ model.pkl loaded")
     else:
         print("⚠  model.pkl not found")
+
     if os.path.exists(LE_PATH):
         _label_encoder = joblib.load(LE_PATH)
+        print("✅ label_encoder.pkl loaded")
+    else:
+        print("⚠  label_encoder.pkl not found — will try to rebuild from metadata")
+
     if os.path.exists(META_PATH):
         with open(META_PATH) as f:
             _metadata = json.load(f)
+
+    # Fallback: if label encoder still missing, rebuild it from metadata stock list
+    if _label_encoder is None and _metadata.get("stocks"):
+        from sklearn.preprocessing import LabelEncoder
+        le = LabelEncoder()
+        le.fit(sorted(_metadata["stocks"]))
+        _label_encoder = le
+        print(f"✅ Label encoder rebuilt from metadata ({len(_metadata['stocks'])} stocks)")
 
 # ── Training runner ──────────────────────────────────────────────────────────────
 def _run_training():
