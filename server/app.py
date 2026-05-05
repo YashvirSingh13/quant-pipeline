@@ -206,6 +206,79 @@ def _compute_fundamentals(ticker: str, feats: dict) -> dict:
         "red_flag_level":  rf_level,
     }
 
+
+# ── Trade Levels (Entry, Stop Loss, Targets, Time Horizon) ──────────────────────
+def _compute_trade_levels(feats: dict, signal: str, horizon: dict) -> dict | None:
+    """
+    Compute actionable trade levels based on current price + ATR.
+
+    Entry  : last price (tight ±0.3% range shown as range)
+    Stop   : BUY  → entry - 1.5×ATR  |  SELL → entry + 1.5×ATR
+    Target1: 1:1  risk-reward
+    Target2: 2:1  risk-reward
+    Time   : primary horizon from trading horizon engine
+    """
+    if signal == "NEUTRAL":
+        return None   # No clear trade — don't show levels
+
+    price = feats.get("_last_price") or feats.get("last_price")
+    atr   = feats.get("ATR", 0)
+
+    if not price or price <= 0:
+        return None
+
+    # Use ATR; fall back to 1.5% of price if ATR missing
+    if not atr or atr <= 0:
+        atr = price * 0.015
+
+    risk = atr * 1.5   # distance to stop loss
+
+    if signal == "BUY":
+        entry_low   = round(price * 0.997, 2)
+        entry_high  = round(price * 1.003, 2)
+        stop_loss   = round(price - risk, 2)
+        target1     = round(price + risk,       2)   # 1:1 R/R
+        target2     = round(price + risk * 2,   2)   # 2:1 R/R
+        stop_pct    = round((stop_loss - price) / price * 100, 2)
+        t1_pct      = round((target1   - price) / price * 100, 2)
+        t2_pct      = round((target2   - price) / price * 100, 2)
+    else:   # SELL
+        entry_low   = round(price * 0.997, 2)
+        entry_high  = round(price * 1.003, 2)
+        stop_loss   = round(price + risk, 2)
+        target1     = round(price - risk,       2)
+        target2     = round(price - risk * 2,   2)
+        stop_pct    = round((stop_loss - price) / price * 100, 2)
+        t1_pct      = round((target1   - price) / price * 100, 2)
+        t2_pct      = round((target2   - price) / price * 100, 2)
+
+    # Time horizon from the horizon engine
+    primary    = (horizon or {}).get("primary", "Short-term")
+    recommended = (horizon or {}).get("recommended", [])
+    period_map = {
+        "Intraday":   "Intraday",
+        "Short-term": "3–5 Days",
+        "Swing":      "1–3 Weeks",
+        "Long-term":  "Months+",
+    }
+    time_label = period_map.get(primary, "3–5 Days")
+
+    return {
+        "signal":      signal,
+        "entry_low":   entry_low,
+        "entry_high":  entry_high,
+        "entry_mid":   round(price, 2),
+        "stop_loss":   stop_loss,
+        "stop_pct":    stop_pct,
+        "target1":     target1,
+        "target1_pct": t1_pct,
+        "target2":     target2,
+        "target2_pct": t2_pct,
+        "time_horizon": time_label,
+        "risk_reward":  "1:1 & 2:1",
+        "atr_used":    round(atr, 2),
+    }
+
 # ── Feature lists (must match train.py exactly) ──────────────────────────────────
 STOCK_FEATURES = [
     "RSI", "MA50", "MA200", "MA_Cross", "Volatility",
@@ -272,12 +345,26 @@ def _get_model_for_ticker(ticker: str):
     raise RuntimeError("No model available. Training may still be in progress.")
 
 # ── Helpers: artefact loading ───────────────────────────────────────────────────
+def _strip_model_feature_names(model):
+    """Strip whitespace from XGBoost's stored feature names — fixes legacy models."""
+    try:
+        if hasattr(model, "feature_names_in_"):
+            model.feature_names_in_ = np.array(
+                [f.strip() for f in model.feature_names_in_]
+            )
+        booster = model.get_booster()
+        if booster.feature_names:
+            booster.feature_names = [f.strip() for f in booster.feature_names]
+    except Exception as e:
+        print(f"⚠  Could not strip feature names: {e}")
+
 def _reload_artefacts():
     global _global_model, _label_encoder, _metadata, _stock_models
     _stock_models = {}  # clear per-stock cache so fresh models load
 
     if os.path.exists(MODEL_PATH):
         _global_model = joblib.load(MODEL_PATH)
+        _strip_model_feature_names(_global_model)
         print("✅ Global model loaded")
     else:
         print("⚠  Global model not found")
@@ -290,6 +377,10 @@ def _reload_artefacts():
 
     if os.path.exists(META_PATH):
         with open(META_PATH) as f: _metadata = json.load(f)
+        # Strip whitespace from stored feature lists too
+        for key in ("global_features","stock_features"):
+            if key in _metadata:
+                _metadata[key] = [f.strip() for f in _metadata[key]]
 
     # Fallback: rebuild label encoder from metadata stocks list
     if _label_encoder is None and _metadata.get("stocks"):
@@ -437,8 +528,12 @@ def _live_features(ticker: str, df=None) -> dict:
 # ── Prediction logic ─────────────────────────────────────────────────────────────
 def _run_predict(ticker: str, feats: dict) -> dict:
     model, feature_list, model_type = _get_model_for_ticker(ticker)
-    vals = [feats[f] for f in feature_list]
-    prob = float(model.predict_proba([vals])[0][1])
+    # Strip spaces — handles legacy models with trailing-space feature names
+    feature_list = [f.strip() for f in feature_list]
+    clean_feats  = {k.strip(): v for k, v in feats.items()}
+    vals = [clean_feats.get(f, 0) for f in feature_list]
+    # np.array bypasses XGBoost's internal feature name validation
+    prob = float(model.predict_proba(np.array([vals]))[0][1])
 
     # Three-way signal
     if   prob > BUY_THRESH:  signal = "BUY"
@@ -720,7 +815,16 @@ def predict_live(ticker: str):
         horizon = {"horizons": [], "recommended": [], "primary": "Short-term",
                    "summary": "Could not compute"}
 
-    # ── Step 9: Fundamentals (re-use yf.info already fetched in fundamental engine) ─
+    # ── Step 9: Trade levels (entry, stop, targets) ────────────────────────────
+    consensus_signal = consensus.get("signal", ml_result.get("signal","NEUTRAL"))
+    try:
+        feats_with_price = {**feats, "_last_price": feats.get("_last_price")}
+        trade_levels = _compute_trade_levels(feats_with_price, consensus_signal, horizon)
+    except Exception as exc:
+        print(f"⚠  Trade levels failed: {exc}")
+        trade_levels = None
+
+    # ── Step 10: Fundamentals (re-use yf.info already fetched in fundamental engine) ─
     fundamentals = None
     try:
         fundamentals = _compute_fundamentals(ticker, feats)
@@ -747,6 +851,7 @@ def predict_live(ticker: str):
         },
         # Extras
         "shap":           shap_result,
+        "trade_levels":   trade_levels,
         "fundamentals":   fundamentals,
         "horizon":        horizon,
         "new_stock":      is_new,
