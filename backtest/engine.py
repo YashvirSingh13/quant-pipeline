@@ -101,13 +101,37 @@ def run_backtest(ticker, model, label_encoder, metadata, sector_map, period="3y"
 
     feat_df = _build_features(raw, nc, nm, nr, ticker_code, sector_code)
 
-    # Select correct feature list from metadata
+    # ── Strip ALL whitespace from feature names everywhere ────────────────────
+    # Older models saved with trailing spaces due to pandas MultiIndex quirk.
+    # Fix it in: (1) the DataFrame, (2) the metadata lists, (3) the model itself
+    feat_df.columns = [str(c).strip() for c in feat_df.columns]
+
     g_feats = metadata.get("global_features")
     s_feats = metadata.get("stock_features")
+    if g_feats: g_feats = [f.strip() for f in g_feats]
+    if s_feats: s_feats = [f.strip() for f in s_feats]
+
     try:
-        probs = model.predict_proba(feat_df[g_feats])[:,1]
+        if hasattr(model, "feature_names_in_"):
+            model.feature_names_in_ = np.array(
+                [f.strip() for f in model.feature_names_in_]
+            )
     except Exception:
-        probs = model.predict_proba(feat_df[s_feats])[:,1]
+        pass
+
+    # Try global → stock → booster names as progressive fallbacks
+    def _try_predict(feat_list):
+        cols = [f for f in feat_list if f in feat_df.columns]
+        return model.predict_proba(feat_df[cols])[:,1]
+
+    try:
+        probs = _try_predict(g_feats or s_feats)
+    except Exception:
+        try:
+            probs = _try_predict(s_feats or g_feats)
+        except Exception:
+            known = [f.strip() for f in model.get_booster().feature_names]
+            probs = _try_predict(known)
 
     buy_thr  = metadata.get("buy_threshold",  0.65)
     sell_thr = metadata.get("sell_threshold", 0.35)
