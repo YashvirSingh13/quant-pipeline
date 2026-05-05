@@ -224,11 +224,13 @@ select, input, button { font-family:var(--mono); font-size:13px; outline:none; }
 .signal-card::before { content:''; position:absolute; top:0;left:0;right:0;height:1px; background:linear-gradient(90deg,transparent,rgba(0,200,255,.4),transparent); }
 .signal-card.buy  { border-color:rgba(0,255,170,.45); }
 .signal-card.sell { border-color:rgba(255,45,85,.45); }
+.signal-card.neutral { border-color:rgba(255,204,0,.4); }
 .signal-card.learning-mode { border-color:rgba(255,204,0,.35); }
 
 .signal-glow { position:absolute; inset:0; opacity:0; transition:opacity .6s; pointer-events:none; }
 .signal-card.buy  .signal-glow { background:radial-gradient(ellipse at 50% 0%,rgba(0,255,170,.14) 0%,transparent 60%); opacity:1; }
 .signal-card.sell .signal-glow { background:radial-gradient(ellipse at 50% 0%,rgba(255,45,85,.14) 0%,transparent 60%); opacity:1; }
+.signal-card.neutral .signal-glow { background:radial-gradient(ellipse at 50% 0%,rgba(255,204,0,.1) 0%,transparent 60%); opacity:1; }
 .signal-card.learning-mode .signal-glow { background:radial-gradient(ellipse at 50% 0%,rgba(255,204,0,.08) 0%,transparent 60%); opacity:1; }
 
 .corner { position:absolute; width:16px; height:16px; }
@@ -239,6 +241,7 @@ select, input, button { font-family:var(--mono); font-size:13px; outline:none; }
 .signal-card.buy  .corner { border-color:rgba(0,255,170,.6); }
 .signal-card.sell .corner { border-color:rgba(255,45,85,.6); }
 .signal-card.learning-mode .corner { border-color:rgba(255,204,0,.5); }
+.signal-card.neutral .corner { border-color:rgba(255,204,0,.5); }
 .signal-card:not(.buy):not(.sell):not(.learning-mode) .corner { border-color:var(--border-hi); }
 
 .signal-content { position:relative; z-index:1; text-align:center; padding:28px; width:100%; }
@@ -252,6 +255,7 @@ select, input, button { font-family:var(--mono); font-size:13px; outline:none; }
 @keyframes signal-in { from{opacity:0;transform:scale(.6) translateY(15px)} to{opacity:1;transform:scale(1) translateY(0)} }
 .buy  .signal-badge { color:var(--buy); text-shadow:0 0 30px rgba(0,255,170,.6),0 0 70px rgba(0,255,170,.3); }
 .sell .signal-badge { color:var(--sell); text-shadow:0 0 30px rgba(255,45,85,.6),0 0 70px rgba(255,45,85,.3); }
+.neutral .signal-badge { color:var(--warn); text-shadow:0 0 30px rgba(255,204,0,.6),0 0 70px rgba(255,204,0,.3); font-size:52px; letter-spacing:4px; }
 
 .ticker-badge { display:inline-block; border:1px solid var(--border-hi); border-radius:3px; padding:2px 10px; font-family:var(--display); font-size:9px; font-weight:600; letter-spacing:2px; color:var(--accent); margin-bottom:8px; }
 
@@ -277,9 +281,11 @@ select, input, button { font-family:var(--mono); font-size:13px; outline:none; }
 .conf-fill { height:100%; border-radius:99px; width:0%; transition:width 1s cubic-bezier(.4,0,.2,1); }
 .buy  .conf-fill { background:linear-gradient(90deg,rgba(0,255,170,.4),var(--buy)); }
 .sell .conf-fill { background:linear-gradient(90deg,rgba(255,45,85,.4),var(--sell)); }
+.neutral .conf-fill { background:linear-gradient(90deg,rgba(255,204,0,.4),var(--warn)); }
 .conf-val { font-family:var(--display); font-size:12px; font-weight:700; min-width:46px; text-align:right; }
 .buy  .conf-val { color:var(--buy); }
 .sell .conf-val { color:var(--sell); }
+.neutral .conf-val { color:var(--warn); }
 .signal-meta { color:var(--dim); font-family:var(--display); font-size:8px; margin-top:10px; letter-spacing:1.5px; }
 
 /* ── Feature table ── */
@@ -475,10 +481,13 @@ select, input, button { font-family:var(--mono); font-size:13px; outline:none; }
 <script>
 const API = "";
 const FEAT_LABELS = {
-  RSI:"RSI (14)",MA50:"MA 50",MA200:"MA 200",MA_Cross:"MA Cross",
-  Volatility:"Volatility (10d)",MACD:"MACD Line",MACD_Signal:"MACD Signal",
-  MACD_Hist:"MACD Histogram",BB_Width:"Bollinger Width",
-  Volume_Log:"Volume (log)",Ticker:"Ticker Code"
+  RSI:"RSI (14)", MA50:"MA 50", MA200:"MA 200", MA_Cross:"MA Cross",
+  Volatility:"Volatility (10d)", MACD:"MACD Line", MACD_Signal:"MACD Signal",
+  MACD_Hist:"MACD Histogram", BB_Width:"Bollinger Width",
+  Volume_Log:"Volume (log)", Volume_Spike:"Volume Spike",
+  ATR:"ATR (14)", High52W_Pct:"52W High %", Low52W_Pct:"52W Low %",
+  Market_Return:"Nifty Return", Market_Regime:"Market Regime (Bull=1)",
+  Earnings_Season:"Earnings Season", Ticker:"Ticker Code", Sector:"Sector Code"
 };
 
 // ── Clock ────────────────────────────────────────────────────────────────────
@@ -581,7 +590,7 @@ async function pollLearning(){
 // ── Signal render ─────────────────────────────────────────────────────────────
 function showSignal(data,ticker){
   const card=document.getElementById("signal-card");
-  const cls=data.signal==="BUY"?"buy":"sell";
+  const cls=data.signal==="BUY"?"buy":data.signal==="NEUTRAL"?"neutral":"sell";
   // Keep learning-mode class if active
   card.className="signal-card "+cls+(data.learning?" learning-mode":"");
   document.getElementById("signal-placeholder").style.display="none";
@@ -595,7 +604,9 @@ function showSignal(data,ticker){
   document.getElementById("conf-val").textContent=data.probability+"%";
   const acc=data.cv_accuracy?(data.cv_accuracy*100).toFixed(1)+"% CV":"";
   const nst=data.n_stocks?`${data.n_stocks} stocks`:"";
-  document.getElementById("signal-meta").textContent=`THRESHOLD ${data.threshold}  ·  ${acc}  ·  ${nst}`;
+  const mt=data.model_type?`${data.model_type} model`:"";
+  const thr=data.signal==="NEUTRAL"?"UNCERTAIN — no trade signal":`BUY>${((data.buy_threshold||0.65)*100).toFixed(0)}%  SELL<${((data.sell_threshold||0.35)*100).toFixed(0)}%`;
+  document.getElementById("signal-meta").textContent=`${thr}  ·  ${acc}  ·  ${mt}`;
 }
 function hideResult(){
   document.getElementById("signal-card").className="signal-card";
