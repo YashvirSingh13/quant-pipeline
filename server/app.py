@@ -208,75 +208,155 @@ def _compute_fundamentals(ticker: str, feats: dict) -> dict:
 
 
 # ── Trade Levels (Entry, Stop Loss, Targets, Time Horizon) ──────────────────────
-def _compute_trade_levels(feats: dict, signal: str, horizon: dict) -> dict | None:
+def _compute_trade_levels(feats: dict, consensus: dict, ml_signal: str,
+                          horizon: dict) -> dict:
     """
-    Compute actionable trade levels based on current price + ATR.
+    Always returns a trade card. Signal confidence tier determines
+    how tight/wide the levels are and what action is recommended.
 
-    Entry  : last price (tight ±0.3% range shown as range)
-    Stop   : BUY  → entry - 1.5×ATR  |  SELL → entry + 1.5×ATR
-    Target1: 1:1  risk-reward
-    Target2: 2:1  risk-reward
-    Time   : primary horizon from trading horizon engine
+    Confidence tiers:
+      HIGH    — consensus directional + ML agree  → tight levels, act
+      MEDIUM  — one directional, other NEUTRAL    → normal levels, consider
+      LOW     — both NEUTRAL                      → wide levels, observe only
+      WATCH   — signals disagree (one BUY, one SELL) → no levels, wait
     """
-    if signal == "NEUTRAL":
-        return None   # No clear trade — don't show levels
-
-    price = feats.get("_last_price") or feats.get("last_price") or feats.get("Close")
-    atr   = feats.get("ATR") or feats.get("atr") or 0
+    price = feats.get("_last_price") or feats.get("last_price") or 0
+    atr   = feats.get("ATR") or 0
 
     if not price or price <= 0:
-        return None
-
-    # Use ATR; fall back to 1.5% of price if ATR missing
+        price = 0
     if not atr or atr <= 0:
-        atr = price * 0.015
+        atr = price * 0.015 if price > 0 else 1
 
-    risk = atr * 1.5   # distance to stop loss
+    consensus_signal   = (consensus or {}).get("signal", "NEUTRAL")
+    consensus_conf     = (consensus or {}).get("confidence", 0)
+    agreement_label    = (consensus or {}).get("agreement_label", "—")
+    votes              = (consensus or {}).get("votes", {})
+    engine_breakdown   = (consensus or {}).get("engine_breakdown", [])
 
-    if signal == "BUY":
-        entry_low   = round(price * 0.997, 2)
-        entry_high  = round(price * 1.003, 2)
-        stop_loss   = round(price - risk, 2)
-        target1     = round(price + risk,       2)   # 1:1 R/R
-        target2     = round(price + risk * 2,   2)   # 2:1 R/R
-        stop_pct    = round((stop_loss - price) / price * 100, 2)
-        t1_pct      = round((target1   - price) / price * 100, 2)
-        t2_pct      = round((target2   - price) / price * 100, 2)
-    else:   # SELL
-        entry_low   = round(price * 0.997, 2)
-        entry_high  = round(price * 1.003, 2)
-        stop_loss   = round(price + risk, 2)
-        target1     = round(price - risk,       2)
-        target2     = round(price - risk * 2,   2)
-        stop_pct    = round((stop_loss - price) / price * 100, 2)
-        t1_pct      = round((target1   - price) / price * 100, 2)
-        t2_pct      = round((target2   - price) / price * 100, 2)
+    # ── Determine confidence tier ─────────────────────────────────────────────
+    if consensus_signal != "NEUTRAL" and ml_signal == consensus_signal:
+        tier        = "HIGH"
+        action_sig  = consensus_signal
+        risk_mult   = 1.5
+        action_text = f"Strong {action_sig} — {agreement_label} engines agree"
+        action_color= "buy" if action_sig == "BUY" else "sell"
 
-    # Time horizon from the horizon engine
+    elif consensus_signal != "NEUTRAL" and ml_signal == "NEUTRAL":
+        tier        = "MEDIUM"
+        action_sig  = consensus_signal
+        risk_mult   = 1.8
+        action_text = f"Tentative {action_sig} — engines agree, ML model neutral"
+        action_color= "buy" if action_sig == "BUY" else "sell"
+
+    elif consensus_signal == "NEUTRAL" and ml_signal != "NEUTRAL":
+        tier        = "MEDIUM"
+        action_sig  = ml_signal
+        risk_mult   = 2.0
+        action_text = f"Weak {action_sig} — ML model signal, engines mixed"
+        action_color= "buy" if action_sig == "BUY" else "sell"
+
+    elif (consensus_signal == "BUY" and ml_signal == "SELL") or          (consensus_signal == "SELL" and ml_signal == "BUY"):
+        tier        = "WATCH"
+        action_sig  = "WATCH"
+        risk_mult   = 2.0
+        action_text = "Conflicting signals — wait for clarity before entering"
+        action_color= "warn"
+
+    else:
+        # Both NEUTRAL
+        tier        = "LOW"
+        action_sig  = "NEUTRAL"
+        risk_mult   = 2.5
+        action_text = "No clear signal — observe only, do not trade"
+        action_color= "dim"
+
+    # ── Compute price levels ──────────────────────────────────────────────────
+    risk = atr * risk_mult
+
+    period_map = {"Intraday":"Intraday","Short-term":"3–5 Days",
+                  "Swing":"1–3 Weeks","Long-term":"Months+"}
     primary    = (horizon or {}).get("primary", "Short-term")
-    recommended = (horizon or {}).get("recommended", [])
-    period_map = {
-        "Intraday":   "Intraday",
-        "Short-term": "3–5 Days",
-        "Swing":      "1–3 Weeks",
-        "Long-term":  "Months+",
-    }
     time_label = period_map.get(primary, "3–5 Days")
 
+    if action_sig in ("BUY",):
+        entry_low  = round(price * 0.997, 2)
+        entry_high = round(price * 1.003, 2)
+        stop_loss  = round(price - risk, 2)
+        target1    = round(price + risk,     2)
+        target2    = round(price + risk * 2, 2)
+        stop_pct   = round((stop_loss - price) / price * 100, 2) if price else 0
+        t1_pct     = round((target1   - price) / price * 100, 2) if price else 0
+        t2_pct     = round((target2   - price) / price * 100, 2) if price else 0
+
+    elif action_sig in ("SELL",):
+        entry_low  = round(price * 0.997, 2)
+        entry_high = round(price * 1.003, 2)
+        stop_loss  = round(price + risk, 2)
+        target1    = round(price - risk,     2)
+        target2    = round(price - risk * 2, 2)
+        stop_pct   = round((stop_loss - price) / price * 100, 2) if price else 0
+        t1_pct     = round((target1   - price) / price * 100, 2) if price else 0
+        t2_pct     = round((target2   - price) / price * 100, 2) if price else 0
+
+    else:
+        # NEUTRAL / WATCH — show observation range, no directional targets
+        entry_low  = round(price * 0.990, 2)
+        entry_high = round(price * 1.010, 2)
+        stop_loss  = None
+        target1    = None
+        target2    = None
+        stop_pct   = None
+        t1_pct     = None
+        t2_pct     = None
+
+    # ── Engine-by-engine recommendation summary ───────────────────────────────
+    engine_recs = []
+    ENGINE_LABELS = {
+        "xgboost":"XGBoost ML","multi_timeframe":"Multi-Timeframe",
+        "mean_reversion":"Mean Reversion","sentiment":"Sentiment",
+        "fundamental_rank":"Fundamental",
+    }
+    for bd in engine_breakdown:
+        engine_recs.append({
+            "name":   ENGINE_LABELS.get(bd.get("engine",""), bd.get("engine","")),
+            "signal": bd.get("signal","NEUTRAL"),
+            "weight": bd.get("weight", 0),
+            "detail": bd.get("detail",""),
+        })
+
+    # ── Tier-based guidance text ──────────────────────────────────────────────
+    guidance_map = {
+        "HIGH":   "High confidence — consider entering with defined risk.",
+        "MEDIUM": "Moderate confidence — use smaller position size, keep stop tight.",
+        "LOW":    "Low confidence — wait for more signals to align before trading.",
+        "WATCH":  "Conflicting signals — do not enter. Wait for consensus.",
+    }
+
     return {
-        "signal":      signal,
-        "entry_low":   entry_low,
-        "entry_high":  entry_high,
-        "entry_mid":   round(price, 2),
-        "stop_loss":   stop_loss,
-        "stop_pct":    stop_pct,
-        "target1":     target1,
-        "target1_pct": t1_pct,
-        "target2":     target2,
-        "target2_pct": t2_pct,
-        "time_horizon": time_label,
-        "risk_reward":  "1:1 & 2:1",
-        "atr_used":    round(atr, 2),
+        "signal":         action_sig,
+        "tier":           tier,
+        "action_text":    action_text,
+        "action_color":   action_color,
+        "guidance":       guidance_map[tier],
+        "entry_low":      entry_low,
+        "entry_high":     entry_high,
+        "entry_mid":      round(price, 2),
+        "stop_loss":      stop_loss,
+        "stop_pct":       stop_pct,
+        "target1":        target1,
+        "target1_pct":    t1_pct,
+        "target2":        target2,
+        "target2_pct":    t2_pct,
+        "time_horizon":   time_label if action_sig not in ("NEUTRAL","WATCH") else "Wait for signal",
+        "risk_reward":    "1:1 & 2:1" if action_sig in ("BUY","SELL") else "—",
+        "risk_mult":      risk_mult,
+        "atr_used":       round(atr, 2),
+        "engine_recs":    engine_recs,
+        "votes":          votes,
+        "consensus_conf": round(consensus_conf, 1),
+        "ml_signal":      ml_signal,
+        "consensus_signal": consensus_signal,
     }
 
 # ── Feature lists (must match train.py exactly) ──────────────────────────────────
@@ -818,14 +898,11 @@ def predict_live(ticker: str):
         horizon = {"horizons": [], "recommended": [], "primary": "Short-term",
                    "summary": "Could not compute"}
 
-    # ── Step 9: Trade levels (entry, stop, targets) ────────────────────────────
-    # Prefer consensus signal; if NEUTRAL fall back to ML signal so we still
-    # show trade levels when the model is directional even if engines disagree.
-    consensus_signal = consensus.get("signal", "NEUTRAL")
-    ml_signal        = ml_result.get("signal", "NEUTRAL")
-    trade_signal     = consensus_signal if consensus_signal != "NEUTRAL" else ml_signal
+    # ── Step 9: Trade levels (entry, stop, targets) ─────────────────────────
     try:
-        trade_levels = _compute_trade_levels(feats, trade_signal, horizon)
+        trade_levels = _compute_trade_levels(
+            feats, consensus, ml_result.get("signal","NEUTRAL"), horizon
+        )
     except Exception as exc:
         print(f"⚠  Trade levels failed: {exc}")
         trade_levels = None
