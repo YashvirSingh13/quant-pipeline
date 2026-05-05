@@ -1323,7 +1323,12 @@ async function fetchLive(){
     document.getElementById("bt-panel").style.display="block";
     document.getElementById("bt-placeholder").textContent=`SELECT PERIOD → RUN BACKTEST FOR ${ticker}`;
     document.getElementById("bt-results").style.display="none";
-  }catch(e){toast("Network error: "+e.message,"error");}
+  }catch(e){
+  const msg = e.message.includes("pattern") || e.message.includes("JSON")
+    ? "Server still starting up — please wait 1–2 min and try again"
+    : "Network error: "+e.message;
+  toast(msg,"error");
+}
   finally{setLoading("btn-live","live-icon",false,"↻");}
 }
 
