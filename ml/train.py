@@ -59,28 +59,27 @@ META_PATH   = os.path.join(DATA_DIR, "model_metadata.json")
 SEED_STOCKS = [
     # Banking
     "HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "AXISBANK.NS",
-    "KOTAKBANK.NS", "INDUSINDBK.NS",
+    "KOTAKBANK.NS",
     # Finance & Insurance
     "BAJFINANCE.NS", "BAJAJFINSV.NS", "SBILIFE.NS", "HDFCLIFE.NS",
-    "SHRIRAMFIN.NS",
     # Information Technology
-    "TCS.NS", "INFY.NS", "WIPRO.NS", "HCLTECH.NS", "TECHM.NS", "LTIM.NS",
+    "TCS.NS", "INFY.NS", "WIPRO.NS", "LTIM.NS",
     # Energy & Oil
     "RELIANCE.NS", "ONGC.NS", "BPCL.NS", "COALINDIA.NS", "NTPC.NS",
     "POWERGRID.NS",
     # FMCG & Consumer
-    "HINDUNILVR.NS", "ITC.NS", "BRITANNIA.NS", "NESTLEIND.NS", "TATACONSUM.NS",
+    "HINDUNILVR.NS", "ITC.NS", "BRITANNIA.NS, "TATACONSUM.NS",
     # Automobile
-    "TATAMOTORS.NS", "MARUTI.NS", "BAJAJ-AUTO.NS", "HEROMOTOCO.NS",
+    "TATAMOTORS.NS", "MARUTI.NS", "BAJAJ-AUTO.NS",
     "EICHERMOT.NS", "M&M.NS",
     # Infrastructure & Cement
-    "LT.NS", "ADANIPORTS.NS", "ULTRACEMCO.NS", "GRASIM.NS",
+    "LT.NS", "ADANIPORTS.NS", "GRASIM.NS",
     # Pharma & Healthcare
     "SUNPHARMA.NS", "DRREDDY.NS", "CIPLA.NS", "DIVISLAB.NS", "APOLLOHOSP.NS",
     # Metals & Mining
-    "TATASTEEL.NS", "JSWSTEEL.NS", "HINDALCO.NS",
+    "TATASTEEL.NS", "JSWSTEEL.NS",
     # Other / Consumer / Telecom
-    "ASIANPAINT.NS", "TITAN.NS", "TRENT.NS", "BHARTIARTL.NS",
+    "ASIANPAINT.NS", "TITAN.NS, "BHARTIARTL.NS",
 ]
 PERIOD       = "10y"
 N_SPLITS     = 5       # for global model CV
