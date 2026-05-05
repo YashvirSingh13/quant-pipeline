@@ -20,4 +20,5 @@ ENV PORT=8000
 EXPOSE $PORT
 
 # Start server — reads $PORT so the platform can route traffic correctly
-CMD uvicorn server.app:app --host 0.0.0.0 --port $PORT
+CMD ["sh", "-c", "uvicorn server.app:app --host 0.0.0.0 --port ${PORT:-8000}"]
+
