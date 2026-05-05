@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: quant-pipeline
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 8000
