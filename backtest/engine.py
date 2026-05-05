@@ -101,36 +101,13 @@ def run_backtest(ticker, model, label_encoder, metadata, sector_map, period="3y"
 
     feat_df = _build_features(raw, nc, nm, nr, ticker_code, sector_code)
 
-    # ── Definitive feature-name fix ───────────────────────────────────────────
-    # XGBoost validates feature names inside predict_proba even if we strip the
-    # DataFrame columns — because the model object stores them independently.
-    # Passing a numpy array (.values) bypasses that validation entirely since
-    # numpy arrays have no column names. This is the only 100% reliable fix
-    # for models trained with trailing-space feature names.
-    feat_df.columns = [str(c).strip() for c in feat_df.columns]
-
-    g_feats = metadata.get("global_features") or []
-    s_feats = metadata.get("stock_features")  or []
-    g_feats = [f.strip() for f in g_feats]
-    s_feats = [f.strip() for f in s_feats]
-
-    # Pick the feature list that best matches the DataFrame columns
-    def _best_feat_list():
-        for fl in [g_feats, s_feats]:
-            if fl and all(f in feat_df.columns for f in fl):
-                return fl
-        # Partial match — use intersection, preserving order
-        for fl in [g_feats, s_feats]:
-            available = [f for f in fl if f in feat_df.columns]
-            if len(available) >= 5:
-                return available
-        # Last resort: use whatever columns exist in feat_df
-        return list(feat_df.columns)
-
-    feats_to_use = _best_feat_list()
-
-    # Pass .values (numpy array) — completely bypasses XGBoost name validation
-    probs = model.predict_proba(feat_df[feats_to_use].values)[:,1]
+    # Select correct feature list from metadata
+    g_feats = metadata.get("global_features")
+    s_feats = metadata.get("stock_features")
+    try:
+        probs = model.predict_proba(feat_df[g_feats])[:,1]
+    except Exception:
+        probs = model.predict_proba(feat_df[s_feats])[:,1]
 
     buy_thr  = metadata.get("buy_threshold",  0.65)
     sell_thr = metadata.get("sell_threshold", 0.35)
