@@ -76,6 +76,21 @@
 
   .trade-disclaimer { text-align:center; padding:8px 20px 10px; font-family:var(--mono); font-size:10px; color:var(--dim); border-top:1px solid rgba(255,255,255,.04); }
 
+
+  /* ── HMM regime badges ── */
+  .vix-badge.TRENDING  { background:rgba(0,200,255,.1); color:var(--accent); border:1px solid var(--border-hi); }
+  .vix-badge.SIDEWAYS  { background:rgba(255,204,0,.1); color:var(--warn); border:1px solid rgba(255,204,0,.3); }
+  .vix-badge.VOLATILE  { background:rgba(255,45,85,.1); color:var(--sell); border:1px solid rgba(255,45,85,.3); }
+  .vix-badge.UNKNOWN   { background:rgba(255,255,255,.05); color:var(--dim); border:1px solid var(--border); }
+
+  /* ── Regime weight modifier indicator ── */
+  .regime-mod-up   { color:var(--buy); }
+  .regime-mod-down { color:var(--sell); }
+  .regime-mod-neu  { color:var(--dim); }
+
+  /* ── Momentum features row in feature table ── */
+  .feat-table .momentum-row td { color:var(--accent); }
+
 </style>
 <title>QuantPipeline</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -684,6 +699,26 @@ select,input,button { font-family:var(--mono);font-size:15px;outline:none; }
       <span class="consensus-conf-val" id="consensus-conf-val">0%</span>
     </div>
     <div class="engine-rows" id="engine-rows"></div>
+    <!-- HMM Regime row -->
+    <div class="consensus-vix-row" id="consensus-hmm-row" style="display:none">
+      <span>Market Structure:</span>
+      <span class="vix-badge" id="hmm-badge">UNKNOWN</span>
+      <span id="hmm-detail" style="flex:1"></span>
+      <span id="hmm-consistency" style="font-family:var(--display);font-size:10px;color:var(--dim)"></span>
+    </div>
+    <!-- Sector correlation row -->
+    <div class="consensus-vix-row" id="consensus-sec-row" style="display:none">
+      <span>Sector Signal:</span>
+      <span class="vix-badge" id="sec-badge">—</span>
+      <span id="sec-detail" style="flex:1"></span>
+    </div>
+    <!-- Macro context row -->
+    <div class="consensus-vix-row" id="consensus-macro-row" style="display:none">
+      <span>Macro Context:</span>
+      <span id="macro-usd" style="font-family:var(--display);font-size:9px;font-weight:600;padding:2px 8px;border-radius:3px"></span>
+      <span id="macro-crude" style="font-family:var(--display);font-size:9px;font-weight:600;padding:2px 8px;border-radius:3px;margin-left:6px"></span>
+      <span id="macro-seasonal" style="font-size:10px;color:var(--dim);margin-left:auto"></span>
+    </div>
     <div class="consensus-vix-row" id="consensus-vix-row" style="display:none">
       <span>Market Regime:</span>
       <span class="vix-badge" id="vix-badge">NORMAL</span>
@@ -773,13 +808,34 @@ const FEAT_LABELS = {
   Volume_Log:"Volume (log)", Volume_Spike:"Volume Spike",
   ATR:"ATR (14)", High52W_Pct:"52W High %", Low52W_Pct:"52W Low %",
   Market_Return:"Nifty Return", Market_Regime:"Market Regime (Bull=1)",
-  Earnings_Season:"Earnings Season", Ticker:"Ticker Code", Sector:"Sector Code"
+  Earnings_Season:"Earnings Season", Ticker:"Ticker Code", Sector:"Sector Code",
+  Return_1d:"Return (1d)", Return_5d_lag:"Return (5d)", Return_20d:"Return (20d)",
+  Beta_60d:"Beta vs Nifty (60d)", Rel_Strength:"Relative Strength (20d)",
+  Dist_MA20:"Distance from MA20", Dist_MA50:"Distance from MA50",
+  MA20_Slope:"MA20 Slope (5d)", MA50_Slope:"MA50 Slope (10d)",
+  BB_Position:"Bollinger Position",
+  USDINR_Return:"USD/INR Daily Return", USDINR_20d_Mom:"USD/INR Momentum (20d)",
+  Crude_Return:"Crude Oil Daily Return", Crude_20d_Mom:"Crude Momentum (20d)",
+  Month_Sin:"Month (Sin)", Month_Cos:"Month (Cos)",
+  Is_Budget_Month:"Budget Month", Is_Monsoon:"Monsoon Season",
+  SP500_Return:"S&P 500 Return", SP500_5d:"S&P 500 (5d Momentum)",
+  VIX_US_Level:"US VIX Level", VIX_IN_ROC5:"India VIX Rate of Change",
+  VIX_IN_Pct:"India VIX Percentile", US10Y_Level:"US 10Y Yield",
+  US10Y_Chg:"US 10Y Yield Change", FII_Proxy:"FII Flow Proxy",
+  Copper_Return:"Copper Return", Shanghai_Return:"Shanghai Return",
+  NASDAQ_IT:"NASDAQ × IT Signal", USD_Export:"USD × Export Sector",
+  Crude_Sector:"Crude × Energy Signal", Copper_Sector:"Copper × Metals Signal",
+  Shanghai_Sector:"Shanghai × Metals/Infra", Yield_Banking:"Yield × Banking Signal",
+  Monsoon_FMCG:"Monsoon × FMCG Signal"
 };
 const ENGINE_LABELS = {
   xgboost:"XGBoost ML", multi_timeframe:"Multi-Timeframe",
-  mean_reversion:"Mean Reversion", sentiment:"Sentiment", fundamental_rank:"Fundamental",
+  mean_reversion:"Mean Reversion", sentiment:"Sentiment",
+  fundamental_rank:"Fundamental", sector_corr:"Sector Correlation",
+  leader_lagger:"Leader-Lagger", hmm_regime:"HMM Regime",
 };
-const ENGINE_ORDER = ["xgboost","multi_timeframe","mean_reversion","sentiment","fundamental_rank"];
+const ENGINE_ORDER = ["xgboost","multi_timeframe","mean_reversion","sentiment",
+                      "fundamental_rank","sector_corr","leader_lagger"];
 
 // ── Clock ────────────────────────────────────────────────────────────────────
 function updateClock(){ document.getElementById("live-clock").textContent=new Date().toLocaleTimeString("en-IN",{hour12:false}); }
@@ -830,7 +886,7 @@ function clearFields(){
 }
 function clearAll(){
   clearFields(); hideResult();
-  ["feat-panel","fund-panel","shap-panel","consensus-panel","horizon-panel","bt-panel","trade-card"].forEach(id=>{
+  ["feat-panel","fund-panel","shap-panel","consensus-panel","horizon-panel","bt-panel","trade-card","consensus-macro-row"].forEach(id=>{
     document.getElementById(id).style.display="none";
   });
   document.getElementById("feat-panel").style.display="none";
@@ -914,6 +970,13 @@ function renderTradeCard(tl) {
     </div>`;
   }).join("");
 
+  // Position sizing row
+  const posPct = tl.position_pct || 0;
+  const posGuidance = tl.position_guidance || "";
+  const posDisplay = posPct > 0
+    ? `<span style="font-family:var(--display);font-size:14px;font-weight:700;color:var(--accent)">${posPct}%</span> of capital`
+    : `<span style="color:var(--dim)">0% — do not trade</span>`;
+
   el.className = `trade-card ${cls}`;
   el.style.display = "block";
   el.innerHTML = `
@@ -952,6 +1015,11 @@ function renderTradeCard(tl) {
         <div class="trade-cell-value">${tl.time_horizon||"—"}</div>
         <div class="trade-cell-sub">R/R: ${tl.risk_reward||"—"}</div>
       </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;padding:12px 18px;border-top:1px solid rgba(255,255,255,.05);background:rgba(0,200,255,.03)">
+      <div style="font-family:var(--display);font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim)">Suggested Position Size</div>
+      <div style="flex:1">${posDisplay}</div>
+      <div style="font-size:11px;color:var(--dim)">${posGuidance}</div>
     </div>
     <div class="trade-engine-section">
       <div class="trade-engine-label">Engine Breakdown</div>
@@ -1013,9 +1081,10 @@ function renderConsensus(consensus,engines){
       <div class="engine-sig-badge ${cls2}">${sig2}</div>
       <div class="engine-bar-track"><div class="engine-bar-fill ${cls2}" style="width:${barW}%"></div></div>
       <div class="engine-detail" title="${bd.detail||""}">${det}</div>
-      <div class="engine-weight">${w}</div>
+      <div class="engine-weight" title="Perf mod: ${bd.perf_mod||1} | Regime mod: ${bd.regime_mod||1}">${w}</div>
     </div>`;
   }).join("");
+  // VIX
   const vix=consensus.vix_engine;
   if(vix){
     const vixRow=document.getElementById("consensus-vix-row"); vixRow.style.display="flex";
@@ -1024,6 +1093,35 @@ function renderConsensus(consensus,engines){
     document.getElementById("vix-detail").textContent=`India VIX: ${vix.vix||"—"}`;
     document.getElementById("vix-multiplier-label").textContent=`Confidence ×${vix.confidence_multiplier||1}`;
   }
+
+  // HMM Regime + continuous vector
+  const hmm=consensus.hmm_regime;
+  if(hmm && hmm.regime && hmm.regime !== "UNKNOWN"){
+    const hmmRow=document.getElementById("consensus-hmm-row"); hmmRow.style.display="flex";
+    const hBadge=document.getElementById("hmm-badge");
+    hBadge.textContent=hmm.regime; hBadge.className=`vix-badge ${hmm.regime}`;
+    const rv = hmm.regime_vector || {};
+    const rvStr = rv.trend_strength != null
+      ? `Trend:${(rv.trend_strength*100).toFixed(0)}% Vol:${(rv.volatility_level*100).toFixed(0)}% MR:${(rv.mean_reversion_pull*100).toFixed(0)}% Mom:${(rv.momentum_consistency*100).toFixed(0)}%`
+      : (hmm.detail||"");
+    document.getElementById("hmm-detail").textContent=rvStr;
+    document.getElementById("hmm-consistency").textContent=
+      hmm.consistency?`Consistency: ${(hmm.consistency*100).toFixed(0)}%`:"";
+  }
+
+  // Sector correlation (from engines dict passed in)
+  const secE = engines?.sector_corr;
+  if(secE){
+    const secRow=document.getElementById("consensus-sec-row"); secRow.style.display="flex";
+    const sBadge=document.getElementById("sec-badge");
+    sBadge.textContent=secE.signal||"NEUTRAL";
+    sBadge.className=`vix-badge ${secE.signal==="BUY"?"LOW_VOLATILITY":secE.signal==="SELL"?"HIGH_VOLATILITY":"NORMAL"}`;
+    document.getElementById("sec-detail").textContent=
+      secE.detail||`Sector momentum: ${secE.sector_momentum||"—"}%`;
+  }
+
+  // Show regime weight modifiers in engine rows tooltip
+  const effWeights = consensus.effective_weights || {};
 }
 
 // ── SHAP ─────────────────────────────────────────────────────────────────────
@@ -1168,6 +1266,50 @@ async function fetchLive(){
     showSignal(d,ticker);
     renderTradeCard(d.trade_levels || null);
     if(d.consensus) renderConsensus(d.consensus,d.engines);
+    // Macro context row
+    if(d.features){
+      const f=d.features;
+      const macroRow=document.getElementById("consensus-macro-row");
+      if(macroRow){
+        macroRow.style.display="flex";
+        // USD/INR
+        const usdRet=(f.USDINR_Return||0)*100;
+        const usdEl=document.getElementById("macro-usd");
+        const usdStr=usdRet>=0?`+${usdRet.toFixed(2)}%`:`${usdRet.toFixed(2)}%`;
+        usdEl.textContent=`USD/INR ${usdStr}`;
+        usdEl.style.background=usdRet>0.3?"rgba(255,45,85,.12)":usdRet<-0.3?"rgba(0,255,170,.12)":"rgba(255,255,255,.06)";
+        usdEl.style.color=usdRet>0.3?"var(--sell)":usdRet<-0.3?"var(--buy)":"var(--dim)";
+        // Crude
+        const crdRet=(f.Crude_Return||0)*100;
+        const crdEl=document.getElementById("macro-crude");
+        const crdStr=crdRet>=0?`+${crdRet.toFixed(2)}%`:`${crdRet.toFixed(2)}%`;
+        crdEl.textContent=`Crude ${crdStr}`;
+        crdEl.style.background=crdRet>1?"rgba(255,45,85,.12)":crdRet<-1?"rgba(0,255,170,.12)":"rgba(255,255,255,.06)";
+        crdEl.style.color=crdRet>1?"var(--sell)":crdRet<-1?"var(--buy)":"var(--dim)";
+        // Phase 6: S&P, VIX, Yields, FII
+        const sp5=(f.SP500_Return||0)*100;
+        const vixPct=((f.VIX_IN_Pct||0.5)*100).toFixed(0);
+        const vixRoc=((f.VIX_IN_ROC5||0)*100).toFixed(1);
+        const us10y=((f.US10Y_Level||0.04)*100).toFixed(2);
+        const fiiProxy=((f.FII_Proxy||0)*100).toFixed(2);
+        const copper=((f.Copper_Return||0)*100).toFixed(2);
+        const macroLines=[
+          `S&P ${sp5>=0?'+':''}${sp5.toFixed(2)}%`,
+          `VIX ${vixPct}th pct (${vixRoc}% chg)`,
+          `US10Y ${us10y}%`,
+          `FII proxy ${fiiProxy>=0?'+':''}${fiiProxy}%`,
+          copper!=0?`Copper ${copper>=0?'+':''}${copper}%`:'',
+        ].filter(Boolean).join(' · ');
+        // Seasonal
+        const seasonal=[];
+        if(f.Is_Budget_Month) seasonal.push("📋 Budget Month");
+        if(f.Is_Monsoon)      seasonal.push("🌧 Monsoon Season");
+        if(f.Earnings_Season) seasonal.push("📊 Earnings Season");
+        const seasonalStr=seasonal.join(" · ")||"";
+        document.getElementById("macro-seasonal").textContent=
+          [macroLines, seasonalStr].filter(Boolean).join(" | ");
+      }
+    }
     if(d.shap&&d.shap.length>0) renderSHAP(d.shap);
     if(d.fundamentals) renderFundamentals(d.fundamentals);
     if(d.horizon) renderHorizon(d.horizon);
