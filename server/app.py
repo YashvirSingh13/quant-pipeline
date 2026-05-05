@@ -221,8 +221,8 @@ def _compute_trade_levels(feats: dict, signal: str, horizon: dict) -> dict | Non
     if signal == "NEUTRAL":
         return None   # No clear trade — don't show levels
 
-    price = feats.get("_last_price") or feats.get("last_price")
-    atr   = feats.get("ATR", 0)
+    price = feats.get("_last_price") or feats.get("last_price") or feats.get("Close")
+    atr   = feats.get("ATR") or feats.get("atr") or 0
 
     if not price or price <= 0:
         return None
@@ -528,11 +528,14 @@ def _live_features(ticker: str, df=None) -> dict:
 # ── Prediction logic ─────────────────────────────────────────────────────────────
 def _run_predict(ticker: str, feats: dict) -> dict:
     model, feature_list, model_type = _get_model_for_ticker(ticker)
-    # Strip spaces — handles legacy models with trailing-space feature names
-    feature_list = [f.strip() for f in feature_list]
-    clean_feats  = {k.strip(): v for k, v in feats.items()}
+    # Use booster's own feature names (strips trailing spaces from legacy models)
+    try:
+        feature_list = [f.strip() for f in model.get_booster().feature_names]
+    except Exception:
+        feature_list = [f.strip() for f in feature_list]
+    clean_feats = {k.strip(): v for k, v in feats.items()}
     vals = [clean_feats.get(f, 0) for f in feature_list]
-    # np.array bypasses XGBoost's internal feature name validation
+    # numpy array bypasses XGBoost feature name validation entirely
     prob = float(model.predict_proba(np.array([vals]))[0][1])
 
     # Three-way signal
@@ -816,10 +819,13 @@ def predict_live(ticker: str):
                    "summary": "Could not compute"}
 
     # ── Step 9: Trade levels (entry, stop, targets) ────────────────────────────
-    consensus_signal = consensus.get("signal", ml_result.get("signal","NEUTRAL"))
+    # Prefer consensus signal; if NEUTRAL fall back to ML signal so we still
+    # show trade levels when the model is directional even if engines disagree.
+    consensus_signal = consensus.get("signal", "NEUTRAL")
+    ml_signal        = ml_result.get("signal", "NEUTRAL")
+    trade_signal     = consensus_signal if consensus_signal != "NEUTRAL" else ml_signal
     try:
-        feats_with_price = {**feats, "_last_price": feats.get("_last_price")}
-        trade_levels = _compute_trade_levels(feats_with_price, consensus_signal, horizon)
+        trade_levels = _compute_trade_levels(feats, trade_signal, horizon)
     except Exception as exc:
         print(f"⚠  Trade levels failed: {exc}")
         trade_levels = None
