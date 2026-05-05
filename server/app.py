@@ -45,23 +45,55 @@ LE_PATH     = os.path.join(DATA_DIR, "label_encoder.pkl")
 META_PATH   = os.path.join(DATA_DIR, "model_metadata.json")
 PUBLIC_DIR  = os.path.join(ROOT_DIR,  "public")
 
-SEED_STOCKS = ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS"]
+# Full Nifty 50 universe — used to expand the registry on startup
+SEED_STOCKS = [
+    "HDFCBANK.NS","ICICIBANK.NS","SBIN.NS","AXISBANK.NS","KOTAKBANK.NS","INDUSINDBK.NS",
+    "BAJFINANCE.NS","BAJAJFINSV.NS","SBILIFE.NS","HDFCLIFE.NS","SHRIRAMFIN.NS",
+    "TCS.NS","INFY.NS","WIPRO.NS","HCLTECH.NS","TECHM.NS","LTIM.NS",
+    "RELIANCE.NS","ONGC.NS","BPCL.NS","COALINDIA.NS","NTPC.NS","POWERGRID.NS",
+    "HINDUNILVR.NS","ITC.NS","BRITANNIA.NS","NESTLEIND.NS","TATACONSUM.NS",
+    "TATAMOTORS.NS","MARUTI.NS","BAJAJ-AUTO.NS","HEROMOTOCO.NS","EICHERMOT.NS","M&M.NS",
+    "LT.NS","ADANIPORTS.NS","ULTRACEMCO.NS","GRASIM.NS",
+    "SUNPHARMA.NS","DRREDDY.NS","CIPLA.NS","DIVISLAB.NS","APOLLOHOSP.NS",
+    "TATASTEEL.NS","JSWSTEEL.NS","HINDALCO.NS",
+    "ASIANPAINT.NS","TITAN.NS","TRENT.NS","BHARTIARTL.NS",
+]
 
 # ── Sector map (same as train.py) ────────────────────────────────────────────────
+# 0=Banking, 1=Finance/Insurance, 2=IT, 3=Auto, 4=Energy, 5=FMCG,
+# 6=Infra/Cement, 7=Pharma, 8=Metals, 9=Other/Telecom/Consumer
 SECTOR_MAP = {
-    "HDFCBANK.NS":0,  "SBIN.NS":0,      "AXISBANK.NS":0,  "ICICIBANK.NS":0,
-    "KOTAKBANK.NS":0, "BAJFINANCE.NS":0, "INDUSINDBK.NS":0,"BANDHANBNK.NS":0,
-    "TCS.NS":1,       "INFY.NS":1,       "WIPRO.NS":1,     "HCLTECH.NS":1,
-    "TECHM.NS":1,     "MPHASIS.NS":1,    "LTIM.NS":1,
-    "TATAMOTORS.NS":2,"MARUTI.NS":2,     "BAJAJ-AUTO.NS":2,"HEROMOTOCO.NS":2,
-    "EICHERMOT.NS":2, "M&M.NS":2,
-    "RELIANCE.NS":3,  "ONGC.NS":3,       "COALINDIA.NS":3, "BPCL.NS":3,
-    "IOC.NS":3,       "GAIL.NS":3,
-    "HINDUNILVR.NS":4,"BRITANNIA.NS":4,  "NESTLEIND.NS":4, "ITC.NS":4,
-    "DABUR.NS":4,     "MARICO.NS":4,
-    "ADANIPORTS.NS":5,"NTPC.NS":5,       "POWERGRID.NS":5, "LT.NS":5,
-    "SUNPHARMA.NS":6, "DRREDDY.NS":6,    "CIPLA.NS":6,     "DIVISLAB.NS":6,
-    "ASIANPAINT.NS":7,"PIDILITIND.NS":7, "TITAN.NS":7,     "ULTRACEMCO.NS":7,
+    # Banking
+    "HDFCBANK.NS":0,   "ICICIBANK.NS":0,  "SBIN.NS":0,      "AXISBANK.NS":0,
+    "KOTAKBANK.NS":0,  "INDUSINDBK.NS":0, "BANDHANBNK.NS":0,
+    # Finance & Insurance
+    "BAJFINANCE.NS":1, "BAJAJFINSV.NS":1, "SBILIFE.NS":1,   "HDFCLIFE.NS":1,
+    "SHRIRAMFIN.NS":1, "MUTHOOTFIN.NS":1,
+    # IT
+    "TCS.NS":2,        "INFY.NS":2,       "WIPRO.NS":2,     "HCLTECH.NS":2,
+    "TECHM.NS":2,      "LTIM.NS":2,       "MPHASIS.NS":2,   "COFORGE.NS":2,
+    # Auto
+    "TATAMOTORS.NS":3, "MARUTI.NS":3,     "BAJAJ-AUTO.NS":3,"HEROMOTOCO.NS":3,
+    "EICHERMOT.NS":3,  "M&M.NS":3,        "TVSMOTOR.NS":3,
+    # Energy & Oil
+    "RELIANCE.NS":4,   "ONGC.NS":4,       "BPCL.NS":4,      "COALINDIA.NS":4,
+    "NTPC.NS":4,       "POWERGRID.NS":4,  "IOC.NS":4,       "GAIL.NS":4,
+    "ADANIGREEN.NS":4,
+    # FMCG & Consumer Staples
+    "HINDUNILVR.NS":5, "ITC.NS":5,        "BRITANNIA.NS":5, "NESTLEIND.NS":5,
+    "TATACONSUM.NS":5, "DABUR.NS":5,      "MARICO.NS":5,    "COLPAL.NS":5,
+    # Infrastructure & Cement
+    "LT.NS":6,         "ADANIPORTS.NS":6, "ULTRACEMCO.NS":6,"GRASIM.NS":6,
+    "ADANIENT.NS":6,   "SIEMENS.NS":6,    "ABB.NS":6,
+    # Pharma & Healthcare
+    "SUNPHARMA.NS":7,  "DRREDDY.NS":7,    "CIPLA.NS":7,     "DIVISLAB.NS":7,
+    "APOLLOHOSP.NS":7, "MAXHEALTH.NS":7,  "FORTIS.NS":7,
+    # Metals & Mining
+    "TATASTEEL.NS":8,  "JSWSTEEL.NS":8,   "HINDALCO.NS":8,  "VEDL.NS":8,
+    "SAIL.NS":8,       "NMDC.NS":8,
+    # Other / Consumer Discretionary / Telecom / Retail
+    "ASIANPAINT.NS":9, "TITAN.NS":9,      "TRENT.NS":9,     "BHARTIARTL.NS":9,
+    "PIDILITIND.NS":9, "DMART.NS":9,      "NYKAA.NS":9,     "ZOMATO.NS":9,
 }
 
 # ── Sector benchmarks (approximate NSE averages) ────────────────────────────────
@@ -333,6 +365,32 @@ def _compute_trade_levels(feats: dict, consensus: dict, ml_signal: str,
         "WATCH":  "Conflicting signals — do not enter. Wait for consensus.",
     }
 
+    # ── Position Sizing ──────────────────────────────────────────────────────
+    # Formula: position_pct = base × (confidence/100) / vol_norm × regime_mult
+    # base = 2% of capital; vol_norm = ATR/price (normalised 0-1 via clip)
+    BASE_SIZE    = 2.0     # % of capital as starting point
+    conf_ratio   = consensus_conf / 100 if consensus_conf else 0.5
+    vol_norm     = min(1.0, (atr / price) / 0.03) if price > 0 else 1.0  # 3% ATR = 1.0
+    regime_mult  = {
+        "HIGH":   1.20,
+        "MEDIUM": 1.00,
+        "LOW":    0.60,
+        "WATCH":  0.30,
+    }.get(tier, 0.80)
+
+    raw_size   = BASE_SIZE * conf_ratio / max(vol_norm, 0.1) * regime_mult
+    pos_pct    = round(min(5.0, max(0.25, raw_size)), 2)   # cap at 5%, floor at 0.25%
+
+    if action_sig in ("NEUTRAL", "WATCH") or tier in ("LOW", "WATCH"):
+        pos_guidance = "Do not open a position — wait for confirmation"
+        pos_pct      = 0.0
+    elif pos_pct >= 3.5:
+        pos_guidance = f"Full size: high confidence + low volatility"
+    elif pos_pct >= 2.0:
+        pos_guidance = f"Normal size: moderate confidence"
+    else:
+        pos_guidance = f"Half size: lower confidence or elevated volatility"
+
     return {
         "signal":         action_sig,
         "tier":           tier,
@@ -352,6 +410,8 @@ def _compute_trade_levels(feats: dict, consensus: dict, ml_signal: str,
         "risk_reward":    "1:1 & 2:1" if action_sig in ("BUY","SELL") else "—",
         "risk_mult":      risk_mult,
         "atr_used":       round(atr, 2),
+        "position_pct":   pos_pct,
+        "position_guidance": pos_guidance,
         "engine_recs":    engine_recs,
         "votes":          votes,
         "consensus_conf": round(consensus_conf, 1),
@@ -390,8 +450,18 @@ DEBOUNCE_SECS   = 30
 # ── Helpers: stock registry ──────────────────────────────────────────────────────
 def _load_known_stocks() -> list:
     if os.path.exists(STOCKS_FILE):
-        with open(STOCKS_FILE) as f: return json.load(f)
-    _save_known_stocks(SEED_STOCKS); return SEED_STOCKS.copy()
+        with open(STOCKS_FILE) as f:
+            existing = json.load(f)
+        # Merge any new SEED_STOCKS into existing registry automatically
+        new_seeds = [s for s in SEED_STOCKS if s not in existing]
+        if new_seeds:
+            merged = sorted(set(existing + new_seeds))
+            _save_known_stocks(merged)
+            print(f"📋 Registry expanded {len(existing)}→{len(merged)} stocks")
+            return merged
+        return existing
+    _save_known_stocks(SEED_STOCKS)
+    return SEED_STOCKS.copy()
 
 def _save_known_stocks(stocks: list):
     with open(STOCKS_FILE, "w") as f: json.dump(sorted(set(stocks)), f, indent=2)
@@ -552,12 +622,44 @@ def _live_features(ticker: str, df=None) -> dict:
     low   = df["Low"].squeeze()
     vol   = df["Volume"].squeeze()
 
-    # Nifty for market context (last 14 months to match)
-    nifty = yf.download("^NSEI", period="14mo", interval="1d",
-                         auto_adjust=True, progress=False)
-    nifty_close  = nifty["Close"].squeeze()
-    nifty_ma200  = nifty_close.rolling(200).mean()
-    nifty_return = nifty_close.pct_change()
+    # All global data downloaded in parallel
+    import concurrent.futures as _cf
+    _GLOBAL_SYMS = {
+        "nifty":    "^NSEI",
+        "usdinr":   "USDINR=X",
+        "crude":    "BZ=F",
+        "sp500":    "^GSPC",
+        "nasdaq":   "^IXIC",
+        "vix_us":   "^VIX",
+        "vix_in":   "^INDIAVIX",
+        "us10y":    "^TNX",
+        "copper":   "HG=F",
+        "shanghai": "000001.SS",
+    }
+    def _dl_live(sym):
+        try:
+            df = yf.download(sym, period="14mo", interval="1d",
+                             auto_adjust=True, progress=False)
+            return df["Close"].squeeze() if not df.empty else pd.Series(dtype=float)
+        except Exception:
+            return pd.Series(dtype=float)
+
+    with _cf.ThreadPoolExecutor(max_workers=10) as _ex:
+        _futs = {k: _ex.submit(_dl_live, v) for k, v in _GLOBAL_SYMS.items()}
+        _gd   = {k: f.result(timeout=20) for k, f in _futs.items()}
+
+    nifty_close    = _gd["nifty"]
+    nifty_ma200    = nifty_close.rolling(200).mean()
+    nifty_return   = nifty_close.pct_change()
+    usdinr_close   = _gd["usdinr"]
+    crude_close    = _gd["crude"]
+    sp500_close    = _gd["sp500"]
+    nasdaq_close   = _gd["nasdaq"]
+    vix_us_close   = _gd["vix_us"]
+    vix_in_close   = _gd["vix_in"]
+    us10y_close    = _gd["us10y"]
+    copper_close   = _gd["copper"]
+    shanghai_close = _gd["shanghai"]
 
     ma50  = float(close.rolling(50).mean().iloc[-1])
     ma200 = float(close.rolling(200).mean().iloc[-1])
@@ -596,6 +698,81 @@ def _live_features(ticker: str, df=None) -> dict:
         "Market_Return":  mkt_ret,
         "Market_Regime":  int(mkt_c > mkt_ma),
         "Earnings_Season":_earnings_season(last_date.to_pydatetime()),
+        # Phase 1: Momentum features
+        "Return_1d":      float(close.pct_change().iloc[-1]),
+        "Return_5d_lag":  float(close.pct_change(5).iloc[-1]),
+        "Return_20d":     float(close.pct_change(20).iloc[-1]),
+        # Phase 1: Beta vs Nifty (60d rolling)
+        "Beta_60d":       float(
+            close.pct_change().rolling(60).cov(nifty_return.reindex(close.index).fillna(0)) /
+            (nifty_return.reindex(close.index).fillna(0).rolling(60).var() + 1e-9)
+        ).iloc[-1] if len(close) > 60 else 1.0,
+        "Rel_Strength":   float(
+            close.pct_change(20).iloc[-1] - nifty_close.reindex(close.index).ffill().pct_change(20).iloc[-1]
+        ) if len(close) > 20 else 0.0,
+        # Phase 4: Market structure features
+        "Dist_MA20":   float((close.iloc[-1] - close.rolling(20).mean().iloc[-1]) /
+                              (close.rolling(20).mean().iloc[-1] + 1e-9)),
+        "Dist_MA50":   float((close.iloc[-1] - close.rolling(50).mean().iloc[-1]) /
+                              (close.rolling(50).mean().iloc[-1] + 1e-9)),
+        "MA20_Slope":  float(close.rolling(20).mean().pct_change(5).iloc[-1]),
+        "MA50_Slope":  float(close.rolling(50).mean().pct_change(10).iloc[-1]),
+        "BB_Position": float(
+            ((close.iloc[-1] - (close.rolling(20).mean().iloc[-1] - 2*close.rolling(20).std().iloc[-1])) /
+             (4 * close.rolling(20).std().iloc[-1] + 1e-9)).clip(0, 1)
+        ),
+        # Phase 5B: Macro — Dollar, Crude, Seasonal
+        "USDINR_Return":   float(usdinr_close.reindex(close.index).ffill()
+                                 .pct_change().iloc[-1]) if len(usdinr_close) > 1 else 0.0,
+        "USDINR_20d_Mom":  float(usdinr_close.reindex(close.index).ffill()
+                                 .pct_change(20).iloc[-1]) if len(usdinr_close) > 20 else 0.0,
+        "Crude_Return":    float(crude_close.reindex(close.index).ffill()
+                                 .pct_change().iloc[-1]) if len(crude_close) > 1 else 0.0,
+        "Crude_20d_Mom":   float(crude_close.reindex(close.index).ffill()
+                                 .pct_change(20).iloc[-1]) if len(crude_close) > 20 else 0.0,
+        "Month_Sin":       float(np.sin(2 * np.pi * last_date.month / 12)),
+        "Month_Cos":       float(np.cos(2 * np.pi * last_date.month / 12)),
+        "Is_Budget_Month": int(last_date.month == 2),
+        "Is_Monsoon":      int(last_date.month in [6, 7, 8, 9]),
+        # Phase 6: Global macro
+        "SP500_Return":    float(sp500_close.reindex(close.index).ffill().pct_change().iloc[-1])
+                           if len(sp500_close) > 1 else 0.0,
+        "SP500_5d":        float(sp500_close.reindex(close.index).ffill().pct_change(5).iloc[-1])
+                           if len(sp500_close) > 5 else 0.0,
+        "VIX_US_Level":    float(vix_us_close.reindex(close.index).ffill().iloc[-1] / 100)
+                           if len(vix_us_close) > 1 else 0.20,
+        "VIX_IN_ROC5":     float(vix_in_close.reindex(close.index).ffill().pct_change(5).iloc[-1])
+                           if len(vix_in_close) > 5 else 0.0,
+        "VIX_IN_Pct":      float(vix_in_close.reindex(close.index).ffill()
+                                 .rolling(252, min_periods=30).rank(pct=True).iloc[-1])
+                           if len(vix_in_close) > 30 else 0.5,
+        "US10Y_Level":     float(us10y_close.reindex(close.index).ffill().iloc[-1] / 100)
+                           if len(us10y_close) > 1 else 0.04,
+        "US10Y_Chg":       float(us10y_close.reindex(close.index).ffill().diff().iloc[-1])
+                           if len(us10y_close) > 1 else 0.0,
+        "FII_Proxy":       float(
+            nifty_return.reindex(close.index).fillna(0).iloc[-1] -
+            sp500_close.reindex(close.index).ffill().pct_change().fillna(0).iloc[-1]
+        ) if len(sp500_close) > 1 else 0.0,
+        "Copper_Return":   float(copper_close.reindex(close.index).ffill().pct_change().iloc[-1])
+                           if len(copper_close) > 1 else 0.0,
+        "Shanghai_Return": float(shanghai_close.reindex(close.index).ffill().pct_change().iloc[-1])
+                           if len(shanghai_close) > 1 else 0.0,
+
+        # Phase 6: Sector-conditional
+        "NASDAQ_IT":       float(nasdaq_close.reindex(close.index).ffill().pct_change().iloc[-1]
+                                  if len(nasdaq_close) > 1 else 0.0) * int(sector_code == 2),
+        "USD_Export":      float(usdinr_close.reindex(close.index).ffill().pct_change().iloc[-1]
+                                  if len(usdinr_close) > 1 else 0.0) * int(sector_code in [2, 7]),
+        "Crude_Sector":    float(crude_close.reindex(close.index).ffill().pct_change().iloc[-1]
+                                  if len(crude_close) > 1 else 0.0) * int(sector_code == 4),
+        "Copper_Sector":   float(copper_close.reindex(close.index).ffill().pct_change().iloc[-1]
+                                  if len(copper_close) > 1 else 0.0) * int(sector_code == 8),
+        "Shanghai_Sector": float(shanghai_close.reindex(close.index).ffill().pct_change().iloc[-1]
+                                  if len(shanghai_close) > 1 else 0.0) * int(sector_code in [6, 8]),
+        "Yield_Banking":   float(us10y_close.reindex(close.index).ffill().diff().iloc[-1]
+                                  if len(us10y_close) > 1 else 0.0) * int(sector_code in [0, 1]),
+        "Monsoon_FMCG":    int(last_date.month in [6, 7, 8, 9]) * int(sector_code == 5),
         # Identity
         "Ticker":         ticker_code,
         "Sector":         sector_code,
@@ -835,6 +1012,7 @@ def predict_live(ticker: str):
     # ── Step 4: Run all parallel engines concurrently ─────────────────────────
     from engines import mean_reversion, multi_timeframe, sentiment
     from engines import volatility_regime, fundamental_rank, fusion
+    from engines import hmm_regime, sector_correlation, leader_lagger
 
     def _safe(fn, *args, **kwargs):
         try:    return fn(*args, **kwargs)
@@ -844,36 +1022,62 @@ def predict_live(ticker: str):
             return {"engine": name, "signal": "NEUTRAL", "score": 0.5,
                     "detail": str(e)}
 
-    with ThreadPoolExecutor(max_workers=5) as ex:
-        fut_mr  = ex.submit(_safe, mean_reversion.run, ticker, df)
-        fut_mtf = ex.submit(_safe, multi_timeframe.run, ticker, df)
-        fut_sen = ex.submit(_safe, sentiment.run, ticker)
-        fut_vix = ex.submit(_safe, volatility_regime.run)
-        fut_fun = ex.submit(_safe, fundamental_rank.run, ticker,
-                            SECTOR_MAP, SECTOR_BENCHMARKS)
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        fut_mr   = ex.submit(_safe, mean_reversion.run, ticker, df)
+        fut_mtf  = ex.submit(_safe, multi_timeframe.run, ticker, df)
+        fut_sen  = ex.submit(_safe, sentiment.run, ticker)
+        fut_vix  = ex.submit(_safe, volatility_regime.run)
+        fut_fun  = ex.submit(_safe, fundamental_rank.run, ticker,
+                             SECTOR_MAP, SECTOR_BENCHMARKS)
+        fut_hmm  = ex.submit(_safe, hmm_regime.run, df, ticker)
+        fut_sec  = ex.submit(_safe, sector_correlation.run, ticker,
+                             df, SECTOR_MAP)
+        fut_ll   = ex.submit(_safe, leader_lagger.run, ticker)
 
-        mr_res  = fut_mr.result(timeout=12)
-        mtf_res = fut_mtf.result(timeout=12)
-        sen_res = fut_sen.result(timeout=12)
-        vix_res = fut_vix.result(timeout=12)
-        fun_res = fut_fun.result(timeout=12)
+        mr_res   = fut_mr.result(timeout=15)
+        mtf_res  = fut_mtf.result(timeout=15)
+        sen_res  = fut_sen.result(timeout=15)
+        vix_res  = fut_vix.result(timeout=15)
+        fun_res  = fut_fun.result(timeout=15)
+        hmm_res  = fut_hmm.result(timeout=20)
+        sec_res  = fut_sec.result(timeout=20)
+        ll_res   = fut_ll.result(timeout=20)
 
-    # Attach engine name tag to XGBoost result for fusion
+    # Attach engine name for fusion
     xgb_for_fusion = {
         "engine": "xgboost",
         "signal": ml_result["signal"],
         "score":  ml_result["probability"] / 100,
         "detail": f"XGBoost prob {ml_result['probability']}%",
     }
+    # Tag sector_correlation engine name
+    sec_res["engine"] = "sector_corr"
+    ll_res["engine"]  = "leader_lagger"
 
     # ── Step 5: Fuse all signals ──────────────────────────────────────────────
-    vix_multiplier = vix_res.get("confidence_multiplier", 1.0)
+    vix_multiplier  = vix_res.get("confidence_multiplier", 1.0)
+    current_regime  = hmm_res.get("regime", "UNKNOWN")
     consensus = fusion.fuse(
-        [xgb_for_fusion, mr_res, mtf_res, sen_res, fun_res],
-        vix_multiplier=vix_multiplier
+        [xgb_for_fusion, mr_res, mtf_res, sen_res, fun_res, sec_res, ll_res],
+        vix_multiplier    = vix_multiplier,
+        hmm_regime_result = hmm_res,
+        current_regime    = current_regime,
     )
-    # Inject vix engine into consensus breakdown for display
     consensus["vix_engine"] = vix_res
+    consensus["hmm_regime"] = hmm_res
+
+    # ── Step 5b: Record signals for performance tracking ──────────────────────
+    try:
+        from engines.performance_tracker import record_signals
+        record_signals(
+            ticker          = ticker,
+            engine_results  = [xgb_for_fusion, mr_res, mtf_res,
+                                sen_res, fun_res, sec_res, ll_res],
+            regime          = current_regime,
+            price           = feats.get("_last_price", 0),
+        )
+    except Exception as _pe:
+        print(f"⚠  Performance tracking failed: {_pe}")
 
     # ── Step 6: Register stock + auto-retrain if new ──────────────────────────
     is_new = _register_stock(ticker)
@@ -926,11 +1130,14 @@ def predict_live(ticker: str):
         "as_of":          feats["_as_of"],
         # Individual engine results (for display)
         "engines": {
-            "mean_reversion":   mr_res,
-            "multi_timeframe":  mtf_res,
-            "sentiment":        sen_res,
+            "mean_reversion":    mr_res,
+            "multi_timeframe":   mtf_res,
+            "sentiment":         sen_res,
             "volatility_regime": vix_res,
-            "fundamental_rank": fun_res,
+            "fundamental_rank":  fun_res,
+            "hmm_regime":        hmm_res,
+            "sector_corr":       sec_res,
+            "leader_lagger":     ll_res,
         },
         # Extras
         "shap":           shap_result,
@@ -941,6 +1148,25 @@ def predict_live(ticker: str):
         "learning":       is_new or _learning,
         "total_stocks":   len(_load_known_stocks()),
     }
+
+
+@app.get("/performance")
+def engine_performance():
+    """Return rolling accuracy stats for all engines."""
+    try:
+        from engines.performance_tracker import get_performance_summary, resolve_outcomes
+        # Try to resolve any pending outcomes first
+        def _price_fetcher(t):
+            try:
+                df = yf.download(t, period="5d", interval="1d",
+                                 auto_adjust=True, progress=False)
+                return float(df["Close"].iloc[-1]) if not df.empty else None
+            except Exception:
+                return None
+        resolve_outcomes(_price_fetcher)
+        return get_performance_summary()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.get("/backtest")
