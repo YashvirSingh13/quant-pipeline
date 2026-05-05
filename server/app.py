@@ -272,12 +272,26 @@ def _get_model_for_ticker(ticker: str):
     raise RuntimeError("No model available. Training may still be in progress.")
 
 # ── Helpers: artefact loading ───────────────────────────────────────────────────
+def _strip_model_feature_names(model):
+    """Strip whitespace from XGBoost's stored feature names — fixes legacy models."""
+    try:
+        if hasattr(model, "feature_names_in_"):
+            model.feature_names_in_ = np.array(
+                [f.strip() for f in model.feature_names_in_]
+            )
+        booster = model.get_booster()
+        if booster.feature_names:
+            booster.feature_names = [f.strip() for f in booster.feature_names]
+    except Exception as e:
+        print(f"⚠  Could not strip feature names: {e}")
+
 def _reload_artefacts():
     global _global_model, _label_encoder, _metadata, _stock_models
     _stock_models = {}  # clear per-stock cache so fresh models load
 
     if os.path.exists(MODEL_PATH):
         _global_model = joblib.load(MODEL_PATH)
+        _strip_model_feature_names(_global_model)
         print("✅ Global model loaded")
     else:
         print("⚠  Global model not found")
@@ -290,6 +304,10 @@ def _reload_artefacts():
 
     if os.path.exists(META_PATH):
         with open(META_PATH) as f: _metadata = json.load(f)
+        # Strip whitespace from stored feature lists too
+        for key in ("global_features","stock_features"):
+            if key in _metadata:
+                _metadata[key] = [f.strip() for f in _metadata[key]]
 
     # Fallback: rebuild label encoder from metadata stocks list
     if _label_encoder is None and _metadata.get("stocks"):
