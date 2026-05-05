@@ -109,6 +109,67 @@
   .trade-ret.neg { color:var(--sell); }
   #bt-placeholder { text-align:center; padding:30px 18px; color:var(--dim); font-family:var(--display); font-size:10px; letter-spacing:2px; }
 
+
+  /* ── Engine Consensus panel ── */
+  .consensus-hero {
+    padding:18px 18px 12px;
+    display:flex; align-items:center; justify-content:space-between;
+    border-bottom:1px solid var(--border);
+  }
+  .consensus-signal-wrap { display:flex; flex-direction:column; gap:4px; }
+  .consensus-label { font-family:var(--display); font-size:8px; letter-spacing:2px; text-transform:uppercase; color:var(--dim); }
+  .consensus-sig {
+    font-family:var(--display); font-weight:900; font-size:38px;
+    letter-spacing:4px; line-height:1;
+    animation:signal-in .35s cubic-bezier(.17,.67,.29,1.27) both;
+  }
+  .consensus-sig.buy     { color:var(--buy);  text-shadow:0 0 20px rgba(0,255,170,.4); }
+  .consensus-sig.sell    { color:var(--sell); text-shadow:0 0 20px rgba(255,45,85,.4); }
+  .consensus-sig.neutral { color:var(--warn); text-shadow:0 0 20px rgba(255,204,0,.3); }
+
+  .consensus-right { text-align:right; }
+  .consensus-agreement { font-family:var(--display); font-size:11px; font-weight:700; color:var(--accent); }
+  .consensus-sub { font-family:var(--mono); font-size:10px; color:var(--dim); margin-top:2px; }
+
+  .consensus-conf-row { display:flex; align-items:center; gap:10px; padding:10px 18px; border-bottom:1px solid var(--border); }
+  .consensus-conf-label { font-family:var(--display); font-size:8px; letter-spacing:1.2px; text-transform:uppercase; color:var(--dim); white-space:nowrap; }
+  .consensus-conf-track { flex:1; height:5px; background:rgba(255,255,255,.06); border-radius:99px; overflow:hidden; }
+  .consensus-conf-fill  { height:100%; border-radius:99px; transition:width .8s cubic-bezier(.4,0,.2,1); }
+  .consensus-conf-fill.buy     { background:linear-gradient(90deg,rgba(0,255,170,.4),var(--buy)); }
+  .consensus-conf-fill.sell    { background:linear-gradient(90deg,rgba(255,45,85,.4),var(--sell)); }
+  .consensus-conf-fill.neutral { background:linear-gradient(90deg,rgba(255,204,0,.4),var(--warn)); }
+  .consensus-conf-val { font-family:var(--display); font-size:11px; font-weight:700; min-width:44px; text-align:right; color:var(--text); }
+
+  .engine-rows { padding:10px 0; }
+  .engine-row {
+    display:flex; align-items:center; gap:10px;
+    padding:7px 18px; transition:background .12s;
+  }
+  .engine-row:hover { background:rgba(0,200,255,.03); }
+  .engine-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .engine-dot.buy     { background:var(--buy);  box-shadow:0 0 6px var(--buy); }
+  .engine-dot.sell    { background:var(--sell); box-shadow:0 0 6px var(--sell); }
+  .engine-dot.neutral { background:var(--warn); box-shadow:0 0 4px var(--warn); }
+  .engine-name { font-family:var(--display); font-size:9px; font-weight:600; letter-spacing:1px; color:var(--text); width:130px; flex-shrink:0; }
+  .engine-sig-badge { font-family:var(--display); font-size:8px; font-weight:700; letter-spacing:1px; width:60px; flex-shrink:0; }
+  .engine-sig-badge.buy     { color:var(--buy); }
+  .engine-sig-badge.sell    { color:var(--sell); }
+  .engine-sig-badge.neutral { color:var(--warn); }
+  .engine-bar-track { flex:1; height:4px; background:rgba(255,255,255,.06); border-radius:99px; overflow:hidden; }
+  .engine-bar-fill  { height:100%; border-radius:99px; }
+  .engine-bar-fill.buy     { background:var(--buy); }
+  .engine-bar-fill.sell    { background:var(--sell); }
+  .engine-bar-fill.neutral { background:var(--warn); opacity:.6; }
+  .engine-detail { font-size:10px; color:var(--dim); width:170px; flex-shrink:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .engine-weight { font-family:var(--mono); font-size:9px; color:var(--dim); width:30px; text-align:right; flex-shrink:0; }
+
+  .consensus-vix-row { display:flex; align-items:center; gap:10px; padding:8px 18px; border-top:1px solid var(--border); font-size:10px; color:var(--dim); }
+  .vix-badge { font-family:var(--display); font-size:8px; font-weight:700; letter-spacing:1px; padding:2px 8px; border-radius:3px; }
+  .vix-badge.LOW_VOLATILITY  { background:rgba(0,255,170,.1); color:var(--buy); border:1px solid rgba(0,255,170,.3); }
+  .vix-badge.NORMAL          { background:rgba(0,200,255,.08); color:var(--accent); border:1px solid var(--border-hi); }
+  .vix-badge.ELEVATED,.vix-badge.ELEVATED_RISING { background:rgba(255,204,0,.1); color:var(--warn); border:1px solid rgba(255,204,0,.3); }
+  .vix-badge.HIGH_VOLATILITY,.vix-badge.CRISIS { background:rgba(255,45,85,.1); color:var(--sell); border:1px solid rgba(255,45,85,.3); }
+
 </style>
 <title>QuantPipeline</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
@@ -563,6 +624,42 @@ select, input, button { font-family:var(--mono); font-size:13px; outline:none; }
     </div>
 
 
+
+    <!-- Engine Consensus panel -->
+    <div class="panel" id="consensus-panel" style="display:none">
+      <div class="panel-header">◈ Engine Consensus
+        <span id="consensus-agreement-header" style="margin-left:auto;font-size:10px;color:var(--accent)"></span>
+      </div>
+      <!-- Fusion hero -->
+      <div class="consensus-hero">
+        <div class="consensus-signal-wrap">
+          <div class="consensus-label">Fusion Signal</div>
+          <div class="consensus-sig" id="consensus-sig">—</div>
+        </div>
+        <div class="consensus-right">
+          <div class="consensus-agreement" id="consensus-agreement-label">— engines agree</div>
+          <div class="consensus-sub" id="consensus-votes"></div>
+        </div>
+      </div>
+      <!-- Confidence bar -->
+      <div class="consensus-conf-row">
+        <span class="consensus-conf-label">Confidence</span>
+        <div class="consensus-conf-track">
+          <div class="consensus-conf-fill" id="consensus-conf-fill" style="width:0%"></div>
+        </div>
+        <span class="consensus-conf-val" id="consensus-conf-val">0%</span>
+      </div>
+      <!-- Engine breakdown rows -->
+      <div class="engine-rows" id="engine-rows"></div>
+      <!-- VIX regime footer -->
+      <div class="consensus-vix-row" id="consensus-vix-row" style="display:none">
+        <span>Market Regime:</span>
+        <span class="vix-badge" id="vix-badge">NORMAL</span>
+        <span id="vix-detail" style="flex:1"></span>
+        <span id="vix-multiplier-label" style="font-family:var(--display);font-size:9px"></span>
+      </div>
+    </div>
+
     <!-- SHAP explanation panel -->
     <div class="panel" id="shap-panel" style="display:none">
       <div class="panel-header">◈ Signal Explanation <span style="margin-left:auto;font-size:9px;color:var(--dim)">Why did the model decide this?</span></div>
@@ -705,6 +802,7 @@ function clearFields(){
   hideResult();
   document.getElementById("feat-panel").style.display="none";
   document.getElementById("fund-panel").style.display="none";
+  document.getElementById("consensus-panel").style.display="none";
   document.getElementById("shap-panel").style.display="none";
   document.getElementById("bt-panel").style.display="none";
   if (_btChart) { _btChart.destroy(); _btChart=null; }
@@ -774,7 +872,7 @@ function showSignal(data,ticker){
   const acc=data.cv_accuracy?(data.cv_accuracy*100).toFixed(1)+"% CV":"";
   const nst=data.n_stocks?`${data.n_stocks} stocks`:"";
   const mt=data.model_type?`${data.model_type} model`:"";
-  const thr=data.signal==="NEUTRAL"?"UNCERTAIN — no trade signal":`BUY>${((data.buy_threshold||0.65)*100).toFixed(0)}%  SELL<${((data.sell_threshold||0.35)*100).toFixed(0)}%`;
+  const thr=data.signal==="NEUTRAL"?"UNCERTAIN — XGBoost signal":`XGBoost: BUY>${((data.buy_threshold||0.65)*100).toFixed(0)}%  SELL<${((data.sell_threshold||0.35)*100).toFixed(0)}%`;
   document.getElementById("signal-meta").textContent=`${thr}  ·  ${acc}  ·  ${mt}`;
 }
 function hideResult(){
@@ -827,6 +925,88 @@ async function showStocksInfo(){
 }
 
 
+
+
+// ── Engine Consensus render ────────────────────────────────────────────────────
+const ENGINE_LABELS = {
+  xgboost:          "XGBoost ML",
+  multi_timeframe:  "Multi-Timeframe",
+  mean_reversion:   "Mean Reversion",
+  sentiment:        "Sentiment",
+  fundamental_rank: "Fundamental",
+};
+const ENGINE_ORDER = ["xgboost","multi_timeframe","mean_reversion","sentiment","fundamental_rank"];
+
+function renderConsensus(consensus, engines) {
+  if (!consensus) return;
+  document.getElementById("consensus-panel").style.display = "block";
+
+  const sig = consensus.signal || "NEUTRAL";
+  const cls = sig.toLowerCase();
+
+  // Hero signal
+  const sigEl = document.getElementById("consensus-sig");
+  sigEl.textContent = sig;
+  sigEl.className   = `consensus-sig ${cls}`;
+
+  document.getElementById("consensus-agreement-header").textContent = consensus.agreement_label || "";
+  document.getElementById("consensus-agreement-label").textContent  = consensus.agreement_label + " agree";
+
+  const votes = consensus.votes || {};
+  document.getElementById("consensus-votes").textContent =
+    `BUY:${votes.BUY||0}  SELL:${votes.SELL||0}  NEUTRAL:${votes.NEUTRAL||0}`;
+
+  // Confidence bar
+  const conf = consensus.confidence || 0;
+  document.getElementById("consensus-conf-fill").style.width = Math.min(conf*2, 100) + "%";
+  document.getElementById("consensus-conf-fill").className   = `consensus-conf-fill ${cls}`;
+  document.getElementById("consensus-conf-val").textContent  = conf.toFixed(1) + "%";
+
+  // Build engine rows (merge breakdown with individual engine results)
+  const breakdown = consensus.engine_breakdown || [];
+  const rowsEl    = document.getElementById("engine-rows");
+
+  // Map name → breakdown entry
+  const bdMap = {};
+  breakdown.forEach(b => bdMap[b.engine] = b);
+
+  // Also include xgboost from fusion score
+  rowsEl.innerHTML = ENGINE_ORDER.map(name => {
+    const bd  = bdMap[name] || {};
+    const res = (name === "xgboost") ? bd : (engines?.[name] || bd);
+    const sig2 = (bd.signal || res?.signal || "NEUTRAL");
+    const sc   = bd.fusion_score != null ? bd.fusion_score : (bd.score || 0.5);
+    const w    = bd.weight != null ? (bd.weight * 100).toFixed(0) + "%" : "—";
+    const barW = Math.round(Math.abs(sc - 0.5) * 200);
+    const det  = (bd.detail || res?.detail || "").slice(0, 45);
+    const cls2 = sig2.toLowerCase();
+    const label = ENGINE_LABELS[name] || name;
+
+    return `<div class="engine-row">
+      <div class="engine-dot ${cls2}"></div>
+      <div class="engine-name">${label}</div>
+      <div class="engine-sig-badge ${cls2}">${sig2}</div>
+      <div class="engine-bar-track">
+        <div class="engine-bar-fill ${cls2}" style="width:${barW}%"></div>
+      </div>
+      <div class="engine-detail" title="${bd.detail || ""}">${det}</div>
+      <div class="engine-weight">${w}</div>
+    </div>`;
+  }).join("");
+
+  // VIX footer
+  const vix = consensus.vix_engine;
+  if (vix) {
+    const vixRow = document.getElementById("consensus-vix-row");
+    vixRow.style.display = "flex";
+    const badge = document.getElementById("vix-badge");
+    badge.textContent  = vix.regime || "NORMAL";
+    badge.className    = `vix-badge ${(vix.regime||"NORMAL").replace(/ /g,"_")}`;
+    document.getElementById("vix-detail").textContent         = `India VIX: ${vix.vix || "—"}`;
+    document.getElementById("vix-multiplier-label").textContent =
+      `Confidence ×${vix.confidence_multiplier || 1}`;
+  }
+}
 
 // ── SHAP rendering ────────────────────────────────────────────────────────────
 function renderSHAP(shapData) {
@@ -1039,6 +1219,7 @@ async function fetchLive(){
   hideResult();
   document.getElementById("feat-panel").style.display="none";
   document.getElementById("fund-panel").style.display="none";
+  document.getElementById("consensus-panel").style.display="none";
   document.getElementById("shap-panel").style.display="none";
   document.getElementById("bt-panel").style.display="none";
   if (_btChart) { _btChart.destroy(); _btChart=null; }
@@ -1061,6 +1242,7 @@ async function fetchLive(){
       toast(`New stock! ${ticker} added to training registry. Model will retrain in ~30s.`,"warn");
     } else {
       toast(`Signal ready — ${ticker}`);
+    if (d.consensus) renderConsensus(d.consensus, d.engines);
     if (d.fundamentals) renderFundamentals(d.fundamentals);
     if (d.shap && d.shap.length > 0) renderSHAP(d.shap);
     // Show backtest panel ready for this ticker
