@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quant Pipeline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* ── Tokens ── */
+  :root {
+    --bg:       #0b0d10;
+    --surface:  #12151a;
+    --border:   #1e2330;
+    --muted:    #2a3045;
+    --text:     #e2e8f0;
+    --dim:      #64748b;
+    --buy:      #00e676;
+    --sell:     #ff3d71;
+    --accent:   #4fc3f7;
+    --warn:     #ffca28;
+    --radius:   10px;
+    --mono:     "DM Mono", monospace;
+    --sans:     "Syne", sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 14px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .logo {
+    font-family: var(--sans);
+    font-weight: 800;
+    font-size: 20px;
+    letter-spacing: -0.5px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .logo span { color: var(--accent); }
+  .header-meta {
+    font-size: 11px;
+    color: var(--dim);
+    text-align: right;
+    line-height: 1.6;
+  }
+  #model-status {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--dim);
+    margin-right: 5px;
+    vertical-align: middle;
+    transition: background .3s;
+  }
+  #model-status.ready { background: var(--buy); box-shadow: 0 0 8px var(--buy); }
+
+  /* ── Main layout ── */
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 0;
+    max-width: 1200px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 32px 24px;
+    gap: 24px;
+    align-items: start;
+  }
+
+  /* ── Panel ── */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .panel-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--dim);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .panel-body { padding: 20px; }
+
+  /* ── Ticker row ── */
+  .ticker-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  select, input, button {
+    font-family: var(--mono);
+    font-size: 13px;
+    outline: none;
+  }
+  select {
+    flex: 1;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+  }
+  select:focus { border-color: var(--accent); }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 16px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: opacity .15s, transform .1s;
+  }
+  .btn:active { transform: scale(.97); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-primary   { background: var(--accent); color: #000; }
+  .btn-secondary { background: var(--muted);  color: var(--text); }
+  .btn-danger    { background: var(--sell);   color: #fff; }
+  .btn-success   { background: var(--buy);    color: #000; }
+
+  /* ── Field grid ── */
+  .fields-section-label {
+    font-size: 10px;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin-bottom: 10px;
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .fields-section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+  .field-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .field-group { display: flex; flex-direction: column; gap: 5px; }
+  .field-group label {
+    font-size: 10px;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  .field-group input {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 9px 10px;
+    width: 100%;
+    transition: border-color .15s;
+  }
+  .field-group input:focus { border-color: var(--accent); }
+  .field-group input.populated { border-color: #1e3a4a; color: var(--accent); }
+
+  .action-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 18px;
+  }
+  .action-row .btn { flex: 1; justify-content: center; }
+
+  /* ── Right panel ── */
+  .right-col { display: flex; flex-direction: column; gap: 20px; }
+
+  /* ── Signal card ── */
+  .signal-card {
+    position: relative;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    min-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface);
+    transition: border-color .4s;
+  }
+  .signal-card.buy  { border-color: var(--buy); }
+  .signal-card.sell { border-color: var(--sell); }
+  .signal-glow {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity .5s;
+    pointer-events: none;
+  }
+  .signal-card.buy  .signal-glow { background: radial-gradient(ellipse at 50% 0%, rgba(0,230,118,.12) 0%, transparent 70%); opacity: 1; }
+  .signal-card.sell .signal-glow { background: radial-gradient(ellipse at 50% 0%, rgba(255,61,113,.12) 0%, transparent 70%); opacity: 1; }
+
+  .signal-content { position: relative; z-index: 1; text-align: center; padding: 32px; width: 100%; }
+  .signal-placeholder { color: var(--dim); font-family: var(--sans); font-size: 15px; }
+
+  .signal-badge {
+    font-family: var(--sans);
+    font-weight: 800;
+    font-size: 72px;
+    letter-spacing: -3px;
+    line-height: 1;
+    margin-bottom: 12px;
+  }
+  .buy  .signal-badge { color: var(--buy); text-shadow: 0 0 40px rgba(0,230,118,.4); }
+  .sell .signal-badge { color: var(--sell); text-shadow: 0 0 40px rgba(255,61,113,.4); }
+
+  .signal-meta { color: var(--dim); font-size: 12px; margin-top: 8px; }
+
+  /* ── Confidence bar ── */
+  .conf-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+  }
+  .conf-label { font-size: 11px; color: var(--dim); white-space: nowrap; }
+  .conf-track {
+    flex: 1;
+    height: 6px;
+    background: var(--muted);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .conf-fill {
+    height: 100%;
+    border-radius: 99px;
+    width: 0%;
+    transition: width .8s cubic-bezier(.4,0,.2,1);
+  }
+  .buy  .conf-fill { background: var(--buy); }
+  .sell .conf-fill { background: var(--sell); }
+  .conf-val { font-size: 13px; font-weight: 500; min-width: 44px; text-align: right; }
+
+  /* ── Feature table ── */
+  .feat-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .feat-table th {
+    text-align: left;
+    padding: 6px 12px;
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--dim);
+    border-bottom: 1px solid var(--border);
+  }
+  .feat-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--dim);
+  }
+  .feat-table td:last-child { text-align: right; color: var(--text); font-weight: 500; }
+  .feat-table tr:last-child td { border-bottom: none; }
+
+  /* ── Model info ── */
+  .info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .info-item {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+  }
+  .info-item .info-label { font-size: 10px; letter-spacing: .8px; text-transform: uppercase; color: var(--dim); margin-bottom: 4px; }
+  .info-item .info-val { font-size: 16px; font-family: var(--sans); font-weight: 600; }
+
+  /* ── Retrain ── */
+  .retrain-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--dim);
+  }
+  .retrain-row .btn { font-size: 11px; padding: 7px 14px; }
+
+  /* ── Spinner ── */
+  .spin {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Toast ── */
+  #toast {
+    position: fixed;
+    bottom: 28px; right: 28px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 12px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    opacity: 0;
+    transform: translateY(12px);
+    transition: opacity .25s, transform .25s;
+    pointer-events: none;
+    max-width: 300px;
+    z-index: 999;
+  }
+  #toast.show { opacity: 1; transform: translateY(0); }
+  #toast.error { border-color: var(--sell); color: var(--sell); }
+
+  /* ── Responsive ── */
+  @media (max-width: 860px) {
+    main { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">⬡ <span>QUANT</span>PIPELINE</div>
+  <div class="header-meta">
+    <span id="model-status"></span><span id="trained-label">checking model…</span><br>
+    <span id="cv-label"></span>
+  </div>
+</header>
+
+<!-- ── Main ───────────────────────────────────────────────────────────── -->
+<main>
+
+  <!-- Left: Input panel -->
+  <div class="panel">
+    <div class="panel-header">⬡ Signal Input</div>
+    <div class="panel-body">
+
+      <!-- Ticker + Live fetch -->
+      <div class="ticker-row">
+        <select id="ticker">
+          <option value="RELIANCE.NS">RELIANCE.NS</option>
+          <option value="TCS.NS">TCS.NS</option>
+          <option value="INFY.NS">INFY.NS</option>
+          <option value="HDFCBANK.NS">HDFCBANK.NS</option>
+        </select>
+        <button class="btn btn-primary" onclick="fetchLive()" id="btn-live">
+          <span id="live-icon">↻</span> Live
+        </button>
+      </div>
+
+      <!-- Trend indicators -->
+      <div class="fields-section-label">Trend</div>
+      <div class="field-grid">
+        <div class="field-group"><label>RSI</label><input id="f-RSI" type="number" step="any" placeholder="e.g. 54.2"></div>
+        <div class="field-group"><label>MA 50</label><input id="f-MA50" type="number" step="any" placeholder="e.g. 2840.5"></div>
+        <div class="field-group"><label>MA 200</label><input id="f-MA200" type="number" step="any" placeholder="e.g. 2710.0"></div>
+        <div class="field-group"><label>MA Cross</label><input id="f-MA_Cross" type="number" step="any" placeholder="MA50 − MA200"></div>
+      </div>
+
+      <!-- Momentum indicators -->
+      <div class="fields-section-label">Momentum</div>
+      <div class="field-grid">
+        <div class="field-group"><label>MACD</label><input id="f-MACD" type="number" step="any" placeholder="e.g. 12.4"></div>
+        <div class="field-group"><label>MACD Signal</label><input id="f-MACD_Signal" type="number" step="any" placeholder="e.g. 10.1"></div>
+        <div class="field-group"><label>MACD Hist</label><input id="f-MACD_Hist" type="number" step="any" placeholder="e.g. 2.3"></div>
+        <div class="field-group"><label>BB Width</label><input id="f-BB_Width" type="number" step="any" placeholder="e.g. 0.08"></div>
+      </div>
+
+      <!-- Volatility & Volume -->
+      <div class="fields-section-label">Volatility & Volume</div>
+      <div class="field-grid">
+        <div class="field-group"><label>Volatility (10d)</label><input id="f-Volatility" type="number" step="any" placeholder="e.g. 0.014"></div>
+        <div class="field-group"><label>Volume (log)</label><input id="f-Volume_Log" type="number" step="any" placeholder="e.g. 16.2"></div>
+      </div>
+
+      <!-- Actions -->
+      <div class="action-row">
+        <button class="btn btn-secondary" onclick="clearFields()">✕ Clear</button>
+        <button class="btn btn-success" onclick="predictManual()" id="btn-predict">
+          <span id="predict-icon">▶</span> Predict
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Right: Results -->
+  <div class="right-col">
+
+    <!-- Signal card -->
+    <div class="signal-card" id="signal-card">
+      <div class="signal-glow"></div>
+      <div class="signal-content">
+        <div class="signal-placeholder" id="signal-placeholder">Run a prediction to see the signal</div>
+        <div id="signal-result" style="display:none">
+          <div class="signal-badge" id="signal-text"></div>
+          <div class="conf-row">
+            <span class="conf-label">Confidence</span>
+            <div class="conf-track"><div class="conf-fill" id="conf-fill"></div></div>
+            <span class="conf-val" id="conf-val"></span>
+          </div>
+          <div class="signal-meta" id="signal-meta"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Feature breakdown (shown after live fetch) -->
+    <div class="panel" id="feat-panel" style="display:none">
+      <div class="panel-header">⬡ Live Feature Snapshot
+        <span id="price-chip" style="margin-left:auto;font-size:12px;color:var(--accent)"></span>
+      </div>
+      <div class="panel-body" style="padding:0">
+        <table class="feat-table" id="feat-table"></table>
+      </div>
+    </div>
+
+    <!-- Model info -->
+    <div class="panel" id="meta-panel" style="display:none">
+      <div class="panel-header">⬡ Model Info</div>
+      <div class="panel-body">
+        <div class="info-grid" id="meta-grid"></div>
+      </div>
+      <div class="retrain-row">
+        <span>Retrain on latest data:</span>
+        <button class="btn btn-secondary" onclick="retrain()" id="btn-retrain">⟳ Retrain</button>
+        <span id="retrain-status"></span>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────────────
+const API = "";  // same origin; change to http://localhost:3000 for dev
+
+const FEAT_LABELS = {
+  RSI: "RSI (14)", MA50: "MA 50", MA200: "MA 200", MA_Cross: "MA Cross",
+  Volatility: "Volatility (10d)", MACD: "MACD Line", MACD_Signal: "MACD Signal",
+  MACD_Hist: "MACD Histogram", BB_Width: "Bollinger Width", Volume_Log: "Volume (log)", Ticker: "Ticker Code"
+};
+
+// ── Toast ────────────────────────────────────────────────────────────────────
+let _toastTimer;
+function toast(msg, isErr = false) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.className = "show" + (isErr ? " error" : "");
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.className = "", 3000);
+}
+
+// ── Spinner helpers ──────────────────────────────────────────────────────────
+function setLoading(btnId, iconId, loading, icon = "▶") {
+  const btn = document.getElementById(btnId);
+  const ico = document.getElementById(iconId);
+  btn.disabled = loading;
+  ico.innerHTML = loading ? `<span class="spin"></span>` : icon;
+}
+
+// ── Field helpers ─────────────────────────────────────────────────────────────
+function setField(id, val) {
+  const el = document.getElementById("f-" + id);
+  if (!el) return;
+  el.value = typeof val === "number" ? val.toFixed(4) : val;
+  el.classList.add("populated");
+}
+function clearFields() {
+  ["RSI","MA50","MA200","MA_Cross","Volatility","MACD","MACD_Signal","MACD_Hist","BB_Width","Volume_Log"].forEach(f => {
+    const el = document.getElementById("f-" + f);
+    el.value = "";
+    el.classList.remove("populated");
+  });
+  hideResult();
+  document.getElementById("feat-panel").style.display = "none";
+}
+function getFields() {
+  const names = ["RSI","MA50","MA200","MA_Cross","Volatility","MACD","MACD_Signal","MACD_Hist","BB_Width","Volume_Log"];
+  const out = {};
+  for (const n of names) {
+    const v = parseFloat(document.getElementById("f-"+n).value);
+    if (isNaN(v)) return null;
+    out[n] = v;
+  }
+  out.Ticker = 0;
+  return out;
+}
+
+// ── Render signal ─────────────────────────────────────────────────────────────
+function showSignal(data) {
+  const card  = document.getElementById("signal-card");
+  const cls   = data.signal === "BUY" ? "buy" : "sell";
+
+  card.className = `signal-card ${cls}`;
+  document.getElementById("signal-placeholder").style.display = "none";
+
+  const res = document.getElementById("signal-result");
+  res.style.display = "block";
+
+  document.getElementById("signal-text").textContent = data.signal;
+
+  const pct = data.probability;
+  document.getElementById("conf-fill").style.width = pct + "%";
+  document.getElementById("conf-val").textContent = pct + "%";
+
+  const acc = data.cv_accuracy ? (data.cv_accuracy * 100).toFixed(1) + "% CV acc" : "";
+  const thr = `threshold ${data.threshold}`;
+  document.getElementById("signal-meta").textContent = `${thr}  ·  ${acc}`;
+}
+
+function hideResult() {
+  const card = document.getElementById("signal-card");
+  card.className = "signal-card";
+  document.getElementById("signal-placeholder").style.display = "block";
+  document.getElementById("signal-result").style.display = "none";
+}
+
+// ── Feature table ─────────────────────────────────────────────────────────────
+function renderFeatTable(feats, lastPrice, asOf) {
+  const panel = document.getElementById("feat-panel");
+  panel.style.display = "block";
+
+  if (lastPrice) {
+    document.getElementById("price-chip").textContent =
+      `₹${lastPrice.toFixed(2)}  ·  ${asOf}`;
+  }
+
+  const tbl = document.getElementById("feat-table");
+  tbl.innerHTML = `<tr><th>Indicator</th><th>Value</th></tr>` +
+    Object.entries(feats)
+      .filter(([k]) => FEAT_LABELS[k])
+      .map(([k, v]) =>
+        `<tr><td>${FEAT_LABELS[k] || k}</td><td>${typeof v === "number" ? v.toFixed(4) : v}</td></tr>`
+      ).join("");
+}
+
+// ── Load model metadata ───────────────────────────────────────────────────────
+async function loadMeta() {
+  try {
+    const r = await fetch(`${API}/metadata`);
+    if (!r.ok) return;
+    const d = await r.json();
+
+    document.getElementById("model-status").classList.add("ready");
+    document.getElementById("trained-label").textContent =
+      "Model ready · " + new Date(d.trained_at).toLocaleDateString();
+    document.getElementById("cv-label").textContent =
+      `CV Acc ${(d.cv_accuracy_mean * 100).toFixed(1)}% ± ${(d.cv_accuracy_std * 100).toFixed(1)}%`;
+
+    const grid = document.getElementById("meta-grid");
+    const items = [
+      ["Stocks", d.stocks?.length || "—"],
+      ["Samples", d.n_samples?.toLocaleString() || "—"],
+      ["CV Folds", d.cv_folds || "—"],
+      ["Threshold", d.threshold || "—"],
+    ];
+    grid.innerHTML = items.map(([l, v]) =>
+      `<div class="info-item"><div class="info-label">${l}</div><div class="info-val">${v}</div></div>`
+    ).join("");
+    document.getElementById("meta-panel").style.display = "block";
+  } catch (_) {}
+}
+
+// ── Live fetch ────────────────────────────────────────────────────────────────
+async function fetchLive() {
+  const ticker = document.getElementById("ticker").value;
+  setLoading("btn-live", "live-icon", true, "↻");
+  hideResult();
+  document.getElementById("feat-panel").style.display = "none";
+
+  try {
+    const r = await fetch(`${API}/live?ticker=${encodeURIComponent(ticker)}`);
+    const d = await r.json();
+    if (!r.ok) { toast(d.detail || "Live fetch failed", true); return; }
+
+    // Populate fields
+    Object.entries(d.features).forEach(([k, v]) => setField(k, v));
+
+    renderFeatTable(d.features, d.last_price, d.as_of);
+    showSignal(d);
+    toast(`Live data loaded for ${ticker}`);
+  } catch (e) {
+    toast("Network error: " + e.message, true);
+  } finally {
+    setLoading("btn-live", "live-icon", false, "↻");
+  }
+}
+
+// ── Manual predict ────────────────────────────────────────────────────────────
+async function predictManual() {
+  const body = getFields();
+  if (!body) { toast("Fill in all fields first", true); return; }
+
+  setLoading("btn-predict", "predict-icon", true, "▶");
+  hideResult();
+
+  try {
+    const r = await fetch(`${API}/predict`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok) { toast(d.detail || "Prediction failed", true); return; }
+    showSignal(d);
+  } catch (e) {
+    toast("Network error: " + e.message, true);
+  } finally {
+    setLoading("btn-predict", "predict-icon", false, "▶");
+  }
+}
+
+// ── Retrain ───────────────────────────────────────────────────────────────────
+async function retrain() {
+  const btn = document.getElementById("btn-retrain");
+  const status = document.getElementById("retrain-status");
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spin"></span>`;
+  status.textContent = "Starting…";
+
+  try {
+    const r = await fetch(`${API}/retrain`, { method: "POST" });
+    const d = await r.json();
+    if (!r.ok) { toast(d.detail || "Retrain failed", true); return; }
+    status.textContent = "Retraining in background…";
+    toast("Retraining started. This may take a few minutes.");
+    pollRetrain(btn, status);
+  } catch (e) {
+    toast("Network error: " + e.message, true);
+    btn.disabled = false;
+    btn.innerHTML = "⟳ Retrain";
+    status.textContent = "";
+  }
+}
+
+async function pollRetrain(btn, status) {
+  const r   = await fetch(`${API}/retrain/status`);
+  const d   = await r.json();
+  if (d.retraining) {
+    setTimeout(() => pollRetrain(btn, status), 4000);
+  } else {
+    btn.disabled = false;
+    btn.innerHTML = "⟳ Retrain";
+    status.textContent = "Done ✓";
+    toast("Retrain complete — model updated!");
+    setTimeout(() => { status.textContent = ""; loadMeta(); }, 2000);
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+loadMeta();
+</script>
+</body>
+</html>
