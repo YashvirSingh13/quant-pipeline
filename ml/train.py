@@ -55,20 +55,32 @@ LE_PATH     = os.path.join(DATA_DIR, "label_encoder.pkl")
 META_PATH   = os.path.join(DATA_DIR, "model_metadata.json")
 
 # ── Config ──────────────────────────────────────────────────────────────────────
+# Complete Nifty 50 universe (as of 2025)
 SEED_STOCKS = [
-    # Banking & Finance
-    "HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "AXISBANK.NS", "KOTAKBANK.NS",
-    "BAJFINANCE.NS", "BAJAJFINSV.NS",
+    # Banking
+    "HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "AXISBANK.NS",
+    "KOTAKBANK.NS", "INDUSINDBK.NS",
+    # Finance & Insurance
+    "BAJFINANCE.NS", "BAJAJFINSV.NS", "SBILIFE.NS", "HDFCLIFE.NS",
+    "SHRIRAMFIN.NS",
     # Information Technology
-    "TCS.NS", "INFY.NS", "WIPRO.NS", "HCLTECH.NS", "TECHM.NS",
-    # Energy
-    "RELIANCE.NS", "ONGC.NS", "BPCL.NS",
-    # FMCG
-    "HINDUNILVR.NS", "ITC.NS", "BRITANNIA.NS",
+    "TCS.NS", "INFY.NS", "WIPRO.NS", "HCLTECH.NS", "TECHM.NS", "LTIM.NS",
+    # Energy & Oil
+    "RELIANCE.NS", "ONGC.NS", "BPCL.NS", "COALINDIA.NS", "NTPC.NS",
+    "POWERGRID.NS",
+    # FMCG & Consumer
+    "HINDUNILVR.NS", "ITC.NS", "BRITANNIA.NS", "NESTLEIND.NS", "TATACONSUM.NS",
     # Automobile
-    "TATAMOTORS.NS", "MARUTI.NS", "BAJAJ-AUTO.NS",
-    # Infrastructure & Others
-    "LT.NS", "NTPC.NS", "SUNPHARMA.NS", "ASIANPAINT.NS",
+    "TATAMOTORS.NS", "MARUTI.NS", "BAJAJ-AUTO.NS", "HEROMOTOCO.NS",
+    "EICHERMOT.NS", "M&M.NS",
+    # Infrastructure & Cement
+    "LT.NS", "ADANIPORTS.NS", "ULTRACEMCO.NS", "GRASIM.NS",
+    # Pharma & Healthcare
+    "SUNPHARMA.NS", "DRREDDY.NS", "CIPLA.NS", "DIVISLAB.NS", "APOLLOHOSP.NS",
+    # Metals & Mining
+    "TATASTEEL.NS", "JSWSTEEL.NS", "HINDALCO.NS",
+    # Other / Consumer / Telecom
+    "ASIANPAINT.NS", "TITAN.NS", "TRENT.NS", "BHARTIARTL.NS",
 ]
 PERIOD       = "10y"
 N_SPLITS     = 5       # for global model CV
@@ -78,31 +90,77 @@ RETURN_DAYS  = 5       # predict 5-day forward return
 RETURN_MIN   = 0.005   # must be > 0.5% to count as BUY
 
 # ── Sector map ──────────────────────────────────────────────────────────────────
-# 0=Banking/Finance, 1=IT, 2=Auto, 3=Energy, 4=FMCG, 5=Infra, 6=Pharma, 7=Other
+# 0=Banking, 1=Finance/Insurance, 2=IT, 3=Auto, 4=Energy, 5=FMCG,
+# 6=Infra/Cement, 7=Pharma, 8=Metals, 9=Other/Telecom/Consumer
 SECTOR_MAP = {
-    "HDFCBANK.NS":0,  "SBIN.NS":0,      "AXISBANK.NS":0,  "ICICIBANK.NS":0,
-    "KOTAKBANK.NS":0, "BAJFINANCE.NS":0, "INDUSINDBK.NS":0,"BANDHANBNK.NS":0,
-    "TCS.NS":1,       "INFY.NS":1,       "WIPRO.NS":1,     "HCLTECH.NS":1,
-    "TECHM.NS":1,     "MPHASIS.NS":1,    "LTIM.NS":1,
-    "TATAMOTORS.NS":2,"MARUTI.NS":2,     "BAJAJ-AUTO.NS":2,"HEROMOTOCO.NS":2,
-    "EICHERMOT.NS":2, "M&M.NS":2,
-    "RELIANCE.NS":3,  "ONGC.NS":3,       "COALINDIA.NS":3, "BPCL.NS":3,
-    "IOC.NS":3,       "GAIL.NS":3,
-    "HINDUNILVR.NS":4,"BRITANNIA.NS":4,  "NESTLEIND.NS":4, "ITC.NS":4,
-    "DABUR.NS":4,     "MARICO.NS":4,
-    "ADANIPORTS.NS":5,"NTPC.NS":5,       "POWERGRID.NS":5, "LT.NS":5,
-    "SUNPHARMA.NS":6, "DRREDDY.NS":6,    "CIPLA.NS":6,     "DIVISLAB.NS":6,
-    "ASIANPAINT.NS":7,"PIDILITIND.NS":7, "TITAN.NS":7,     "ULTRACEMCO.NS":7,
+    # Banking
+    "HDFCBANK.NS":0,   "ICICIBANK.NS":0,  "SBIN.NS":0,      "AXISBANK.NS":0,
+    "KOTAKBANK.NS":0,  "INDUSINDBK.NS":0, "BANDHANBNK.NS":0,
+    # Finance & Insurance
+    "BAJFINANCE.NS":1, "BAJAJFINSV.NS":1, "SBILIFE.NS":1,   "HDFCLIFE.NS":1,
+    "SHRIRAMFIN.NS":1, "MUTHOOTFIN.NS":1,
+    # IT
+    "TCS.NS":2,        "INFY.NS":2,       "WIPRO.NS":2,     "HCLTECH.NS":2,
+    "TECHM.NS":2,      "LTIM.NS":2,       "MPHASIS.NS":2,   "COFORGE.NS":2,
+    # Auto
+    "TATAMOTORS.NS":3, "MARUTI.NS":3,     "BAJAJ-AUTO.NS":3,"HEROMOTOCO.NS":3,
+    "EICHERMOT.NS":3,  "M&M.NS":3,        "TVSMOTOR.NS":3,
+    # Energy & Oil
+    "RELIANCE.NS":4,   "ONGC.NS":4,       "BPCL.NS":4,      "COALINDIA.NS":4,
+    "NTPC.NS":4,       "POWERGRID.NS":4,  "IOC.NS":4,       "GAIL.NS":4,
+    "ADANIGREEN.NS":4,
+    # FMCG & Consumer Staples
+    "HINDUNILVR.NS":5, "ITC.NS":5,        "BRITANNIA.NS":5, "NESTLEIND.NS":5,
+    "TATACONSUM.NS":5, "DABUR.NS":5,      "MARICO.NS":5,    "COLPAL.NS":5,
+    # Infrastructure & Cement
+    "LT.NS":6,         "ADANIPORTS.NS":6, "ULTRACEMCO.NS":6,"GRASIM.NS":6,
+    "ADANIENT.NS":6,   "SIEMENS.NS":6,    "ABB.NS":6,
+    # Pharma & Healthcare
+    "SUNPHARMA.NS":7,  "DRREDDY.NS":7,    "CIPLA.NS":7,     "DIVISLAB.NS":7,
+    "APOLLOHOSP.NS":7, "MAXHEALTH.NS":7,  "FORTIS.NS":7,
+    # Metals & Mining
+    "TATASTEEL.NS":8,  "JSWSTEEL.NS":8,   "HINDALCO.NS":8,  "VEDL.NS":8,
+    "SAIL.NS":8,       "NMDC.NS":8,
+    # Other / Consumer Discretionary / Telecom / Retail
+    "ASIANPAINT.NS":9, "TITAN.NS":9,      "TRENT.NS":9,     "BHARTIARTL.NS":9,
+    "PIDILITIND.NS":9, "DMART.NS":9,      "NYKAA.NS":9,     "ZOMATO.NS":9,
 }
 
 # ── Feature column definitions ──────────────────────────────────────────────────
 # Per-stock model uses these (no Ticker/Sector — they'd be constant per stock)
 STOCK_FEATURES = [
+    # Core technical
     "RSI", "MA50", "MA200", "MA_Cross", "Volatility",
     "MACD", "MACD_Signal", "MACD_Hist", "BB_Width",
     "Volume_Log", "Volume_Spike", "ATR",
     "High52W_Pct", "Low52W_Pct",
+    # Market context
     "Market_Return", "Market_Regime", "Earnings_Season",
+    # Phase 1: Momentum + Beta
+    "Return_1d", "Return_5d_lag", "Return_20d",
+    "Beta_60d", "Rel_Strength",
+    # Phase 4: Market structure — WHERE are we in the cycle?
+    "Dist_MA20",    # % distance from 20-day MA
+    "Dist_MA50",    # % distance from 50-day MA
+    "MA20_Slope",   # 5-day slope of MA20 (trend angle)
+    "MA50_Slope",   # 10-day slope of MA50
+    "BB_Position",  # 0=lower band, 0.5=middle, 1=upper band
+    # Phase 5B: Macro — Dollar, Crude, Seasonal
+    "USDINR_Return",   "USDINR_20d_Mom",
+    "Crude_Return",    "Crude_20d_Mom",
+    "Month_Sin",       "Month_Cos",
+    "Is_Budget_Month", "Is_Monsoon",
+    # Phase 6: Global macro (universal)
+    "SP500_Return",    "SP500_5d",
+    "VIX_US_Level",    "VIX_IN_ROC5",   "VIX_IN_Pct",
+    "US10Y_Level",     "US10Y_Chg",
+    "FII_Proxy",
+    "Copper_Return",   "Shanghai_Return",
+    # Phase 6: Sector-conditional signals
+    "NASDAQ_IT",       "USD_Export",
+    "Crude_Sector",    "Copper_Sector",
+    "Shanghai_Sector", "Yield_Banking",
+    "Monsoon_FMCG",
 ]
 # Global fallback model adds stock-identity features
 GLOBAL_FEATURES = STOCK_FEATURES + ["Ticker", "Sector"]
@@ -111,10 +169,18 @@ GLOBAL_FEATURES = STOCK_FEATURES + ["Ticker", "Sector"]
 def load_stocks() -> list:
     if os.path.exists(STOCKS_FILE):
         with open(STOCKS_FILE) as f:
-            stocks = json.load(f)
-        print(f"📋 Registry: {len(stocks)} stocks — {', '.join(stocks)}")
-        return stocks
-    print(f"📋 No registry — seeding with {len(SEED_STOCKS)} stocks")
+            existing = json.load(f)
+        # Merge any new SEED_STOCKS not already in the registry
+        new_seeds = [s for s in SEED_STOCKS if s not in existing]
+        if new_seeds:
+            merged = sorted(set(existing + new_seeds))
+            save_stocks(merged)
+            print(f"📋 Registry expanded: {len(existing)} → {len(merged)} stocks "
+                  f"(added: {', '.join(new_seeds)})")
+            return merged
+        print(f"📋 Registry: {len(existing)} stocks")
+        return existing
+    print(f"📋 No registry — seeding with {len(SEED_STOCKS)} Nifty 50 stocks")
     save_stocks(SEED_STOCKS)
     return SEED_STOCKS.copy()
 
@@ -170,7 +236,16 @@ def build_features(df: pd.DataFrame,
                    sector_code:  int,
                    nifty_close:  pd.Series,
                    nifty_ma200:  pd.Series,
-                   nifty_return: pd.Series) -> pd.DataFrame:
+                   nifty_return: pd.Series,
+                   usdinr_close:   pd.Series = None,
+                   crude_close:    pd.Series = None,
+                   sp500_close:    pd.Series = None,
+                   nasdaq_close:   pd.Series = None,
+                   vix_us_close:   pd.Series = None,
+                   vix_in_close:   pd.Series = None,
+                   us10y_close:    pd.Series = None,
+                   copper_close:   pd.Series = None,
+                   shanghai_close: pd.Series = None) -> pd.DataFrame:
     df    = df.copy()
     close = df["Close"].squeeze()
     high  = df["High"].squeeze()
@@ -202,13 +277,146 @@ def build_features(df: pd.DataFrame,
     df["Low52W_Pct"]    = close / close.rolling(252).min()
 
     # Market context from Nifty (aligned by date)
-    df["Market_Return"] = nifty_return.reindex(df.index).fillna(0)
-    df["Market_Regime"] = (
-        nifty_close.reindex(df.index) > nifty_ma200.reindex(df.index)
-    ).astype(int).fillna(0)
+    nifty_c = nifty_close.reindex(df.index).fillna(method="ffill")
+    nifty_r = nifty_return.reindex(df.index).fillna(0)
+    nifty_m = nifty_ma200.reindex(df.index).fillna(method="ffill")
+
+    df["Market_Return"] = nifty_r
+    df["Market_Regime"] = (nifty_c > nifty_m).astype(int)
 
     # Earnings season
     df["Earnings_Season"] = is_earnings_season(df.index)
+
+    # ── Phase 1: Momentum features ──────────────────────────────────────────
+    daily_ret            = close.pct_change()
+    df["Return_1d"]      = daily_ret                          # yesterday's return
+    df["Return_5d_lag"]  = close.pct_change(5)               # 5-day lagged return
+    df["Return_20d"]     = close.pct_change(20)              # 20-day momentum
+
+    # ── Phase 1: Rolling Beta vs Nifty ──────────────────────────────────────
+    # Beta = cov(stock, nifty) / var(nifty) over 60-day rolling window
+    cov_60   = daily_ret.rolling(60).cov(nifty_r)
+    var_60   = nifty_r.rolling(60).var()
+    df["Beta_60d"]       = (cov_60 / var_60).clip(-3, 3)    # clip extremes
+
+    # ── Phase 1: Relative strength vs Nifty (20d) ───────────────────────────
+    stock_20d = close.pct_change(20)
+    nifty_20d = nifty_c.pct_change(20)
+    df["Rel_Strength"]   = stock_20d - nifty_20d             # outperformance
+
+    # ── Phase 4: Market structure features ──────────────────────────────────
+    ma20 = close.rolling(20).mean()
+    ma50 = close.rolling(50).mean()
+
+    # Distance from MAs (where are we relative to the mean?)
+    df["Dist_MA20"]   = (close - ma20) / (ma20 + 1e-9)
+    df["Dist_MA50"]   = (close - ma50) / (ma50 + 1e-9)
+
+    # MA slope: rate of change of the MA itself (trend angle)
+    df["MA20_Slope"]  = ma20.pct_change(5)     # 5-day slope
+    df["MA50_Slope"]  = ma50.pct_change(10)    # 10-day slope
+
+    # Bollinger Band position (0=lower band, 0.5=midline, 1=upper band)
+    std20 = close.rolling(20).std()
+    bb_lower = ma20 - 2 * std20
+    bb_upper = ma20 + 2 * std20
+    bb_range = (bb_upper - bb_lower).replace(0, np.nan)
+    df["BB_Position"] = ((close - bb_lower) / bb_range).clip(0, 1)
+
+    # ── Phase 5B: Macro features ────────────────────────────────────────────
+
+    # USD/INR — dollar strength (weak rupee helps IT/Pharma, hurts Energy/FMCG)
+    if usdinr_close is not None and not usdinr_close.empty:
+        usd = usdinr_close.reindex(df.index).ffill().bfill()
+        df["USDINR_Return"]  = usd.pct_change().fillna(0)
+        df["USDINR_20d_Mom"] = usd.pct_change(20).fillna(0)
+    else:
+        df["USDINR_Return"]  = 0.0
+        df["USDINR_20d_Mom"] = 0.0
+
+    # Crude oil (Brent) — affects Energy, Paints, Airlines, Cement
+    if crude_close is not None and not crude_close.empty:
+        crude = crude_close.reindex(df.index).ffill().bfill()
+        df["Crude_Return"]   = crude.pct_change().fillna(0)
+        df["Crude_20d_Mom"]  = crude.pct_change(20).fillna(0)
+    else:
+        df["Crude_Return"]   = 0.0
+        df["Crude_20d_Mom"]  = 0.0
+
+    # Seasonal — cyclical month encoding + Indian market events
+    month = df.index.month
+    df["Month_Sin"]       = np.sin(2 * np.pi * month / 12)
+    df["Month_Cos"]       = np.cos(2 * np.pi * month / 12)
+    df["Is_Budget_Month"] = (month == 2).astype(int)           # Union Budget
+    df["Is_Monsoon"]      = month.isin([6, 7, 8, 9]).astype(int) # Monsoon
+
+
+    # ── Phase 6: Global Macro + Sector-Conditional Features ─────────────────
+    def _sr(s, idx, p=1):
+        if s is None or (hasattr(s,'empty') and s.empty):
+            return pd.Series(0.0, index=idx)
+        return s.reindex(idx).ffill().bfill().pct_change(p).fillna(0)
+
+    def _sl(s, idx, default=0.0):
+        if s is None or (hasattr(s,'empty') and s.empty):
+            return pd.Series(default, index=idx)
+        return s.reindex(idx).ffill().bfill().fillna(default)
+
+    idx = df.index
+
+    # S&P 500 — global risk sentiment
+    sp500_r              = _sr(sp500_close, idx)
+    df["SP500_Return"]   = sp500_r
+    df["SP500_5d"]       = _sr(sp500_close, idx, p=5)
+
+    # FII proxy: Nifty return − S&P return  (negative = FII selling India)
+    nifty_r_aligned      = nifty_return.reindex(idx).fillna(0)
+    df["FII_Proxy"]      = nifty_r_aligned - sp500_r
+
+    # US VIX
+    df["VIX_US_Level"]   = _sl(vix_us_close, idx) / 100
+
+    # India VIX enhancements
+    if vix_in_close is not None and not vix_in_close.empty:
+        vix_in            = vix_in_close.reindex(idx).ffill().bfill()
+        df["VIX_IN_ROC5"] = vix_in.pct_change(5).fillna(0)
+        df["VIX_IN_Pct"]  = vix_in.rolling(252, min_periods=30).rank(pct=True).fillna(0.5)
+    else:
+        df["VIX_IN_ROC5"] = 0.0
+        df["VIX_IN_Pct"]  = 0.5
+
+    # US 10Y Treasury
+    if us10y_close is not None and not us10y_close.empty:
+        us10y             = us10y_close.reindex(idx).ffill().bfill()
+        df["US10Y_Level"] = us10y / 100
+        df["US10Y_Chg"]   = us10y.diff().fillna(0)
+    else:
+        df["US10Y_Level"] = 0.04
+        df["US10Y_Chg"]   = 0.0
+
+    # Copper + Shanghai
+    copper_r              = _sr(copper_close, idx)
+    df["Copper_Return"]   = copper_r
+    df["Shanghai_Return"] = _sr(shanghai_close, idx)
+    nasdaq_r              = _sr(nasdaq_close, idx)
+
+    # ── Sector-conditional features ──────────────────────────────────────────
+    is_it      = int(sector_code == 2)
+    is_pharma  = int(sector_code == 7)
+    is_energy  = int(sector_code == 4)
+    is_fmcg    = int(sector_code == 5)
+    is_metals  = int(sector_code == 8)
+    is_infra   = int(sector_code == 6)
+    is_banking = int(sector_code in [0, 1])
+    is_export  = int(sector_code in [2, 7])     # IT + Pharma
+
+    df["NASDAQ_IT"]       = nasdaq_r                * is_it
+    df["USD_Export"]      = df["USDINR_Return"]     * is_export
+    df["Crude_Sector"]    = df["Crude_Return"]      * is_energy
+    df["Copper_Sector"]   = copper_r                * is_metals
+    df["Shanghai_Sector"] = df["Shanghai_Return"]   * int(is_metals or is_infra)
+    df["Yield_Banking"]   = df["US10Y_Chg"]         * is_banking
+    df["Monsoon_FMCG"]    = df["Is_Monsoon"]        * is_fmcg
 
     # Stock identity (for global model)
     df["Ticker"] = ticker_code
@@ -237,7 +445,69 @@ def train():
     nifty_close  = nifty_raw["Close"].squeeze()
     nifty_ma200  = nifty_close.rolling(200).mean()
     nifty_return = nifty_close.pct_change()
-    print(f"   ✅ Nifty: {len(nifty_raw)} rows\n")
+    print(f"   ✅ Nifty: {len(nifty_raw)} rows")
+
+    # ── Download USD/INR ────────────────────────────────────────────────────
+    print("⬇  Downloading USD/INR (USDINR=X) …")
+    try:
+        usdinr_raw   = yf.download("USDINR=X", period=PERIOD, interval="1d",
+                                    auto_adjust=True, progress=False)
+        usdinr_close = usdinr_raw["Close"].squeeze() if not usdinr_raw.empty else None
+        print(f"   ✅ USD/INR: {len(usdinr_raw)} rows")
+    except Exception as e:
+        print(f"   ⚠  USD/INR download failed: {e}")
+        usdinr_close = None
+
+    # ── Download Brent Crude ─────────────────────────────────────────────────
+    print("⬇  Downloading Brent Crude (BZ=F) …")
+    try:
+        crude_raw   = yf.download("BZ=F", period=PERIOD, interval="1d",
+                                   auto_adjust=True, progress=False)
+        crude_close = crude_raw["Close"].squeeze() if not crude_raw.empty else None
+        print(f"   ✅ Crude: {len(crude_raw)} rows\n")
+    except Exception as e:
+        print(f"   ⚠  Crude download failed: {e}")
+        crude_close = None
+
+    # ── Download Phase 6 global data (parallel) ─────────────────────────────
+    print("⬇  Downloading global macro data (S&P, NASDAQ, VIX, Yields, Copper, Shanghai)…")
+    import concurrent.futures as _cf
+
+    _SYMS = {
+        "sp500":    "^GSPC",
+        "nasdaq":   "^IXIC",
+        "vix_us":   "^VIX",
+        "vix_in":   "^INDIAVIX",
+        "us10y":    "^TNX",
+        "copper":   "HG=F",
+        "shanghai": "000001.SS",
+    }
+
+    def _dl_sym(sym):
+        try:
+            df = yf.download(sym, period=PERIOD, interval="1d",
+                             auto_adjust=True, progress=False)
+            return df["Close"].squeeze() if not df.empty else None
+        except Exception:
+            return None
+
+    with _cf.ThreadPoolExecutor(max_workers=7) as _ex:
+        _futs = {k: _ex.submit(_dl_sym, v) for k, v in _SYMS.items()}
+        _macro = {k: f.result(timeout=30) for k, f in _futs.items()}
+
+    sp500_close    = _macro["sp500"]
+    nasdaq_close   = _macro["nasdaq"]
+    vix_us_close   = _macro["vix_us"]
+    vix_in_close   = _macro["vix_in"]
+    us10y_close    = _macro["us10y"]
+    copper_close   = _macro["copper"]
+    shanghai_close = _macro["shanghai"]
+
+    _ok = [k for k, v in _macro.items() if v is not None]
+    _fail = [k for k, v in _macro.items() if v is None]
+    print(f"   ✅ Downloaded: {', '.join(_ok)}")
+    if _fail: print(f"   ⚠  Failed (will use 0 fallback): {', '.join(_fail)}")
+    print()
 
     # Label encoder
     le = LabelEncoder()
@@ -260,7 +530,16 @@ def train():
 
         feat_df = build_features(
             raw, ticker_code, sector_code,
-            nifty_close, nifty_ma200, nifty_return
+            nifty_close, nifty_ma200, nifty_return,
+            usdinr_close   = usdinr_close,
+            crude_close    = crude_close,
+            sp500_close    = sp500_close,
+            nasdaq_close   = nasdaq_close,
+            vix_us_close   = vix_us_close,
+            vix_in_close   = vix_in_close,
+            us10y_close    = us10y_close,
+            copper_close   = copper_close,
+            shanghai_close = shanghai_close,
         )
         if len(feat_df) < 100:
             print(f"   ⚠  Too few rows after feature build for {s}, skipping.")
@@ -344,6 +623,17 @@ def train():
 
     print(f"\n💾 Saved global model + {len(stocks)} per-stock models to {DATA_DIR}")
     print(f"🎯 Done — CV {np.mean(cv_scores):.2%} | Target: {RETURN_DAYS}d return > {RETURN_MIN*100}%")
+
+    # ── Build leader-lagger matrix ────────────────────────────────────────────
+    print("\n📊 Building leader-lagger matrix…")
+    try:
+        import sys as _sys
+        _sys.path.insert(0, ROOT_DIR)
+        from engines.leader_lagger import build_leader_matrix
+        build_leader_matrix(stocks, period="2y")
+    except Exception as _e:
+        print(f"⚠  Leader matrix build skipped: {_e}")
+
     return metadata
 
 if __name__ == "__main__":
