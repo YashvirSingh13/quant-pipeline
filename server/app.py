@@ -26,6 +26,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sklearn.preprocessing import LabelEncoder
 
+# Local modules
+sys.path.insert(0, ROOT_DIR if 'ROOT_DIR' in dir() else os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
 # ── Paths ───────────────────────────────────────────────────────────────────────
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR   = os.path.dirname(BASE_DIR)
@@ -514,14 +518,52 @@ def predict_live(ticker: str):
     result["learning"]     = is_new or _learning
     result["total_stocks"] = len(_load_known_stocks())
 
-    # Fundamental scorecard — fetched alongside technical signal
+    # Fundamental scorecard
     try:
         result["fundamentals"] = _compute_fundamentals(ticker, feats)
     except Exception as exc:
-        print(f"⚠  Fundamentals fetch failed for {ticker}: {exc}")
+        print(f"⚠  Fundamentals failed for {ticker}: {exc}")
         result["fundamentals"] = None
 
+    # SHAP explanation — which features drove this signal
+    try:
+        from ml.explain import explain_prediction
+        model_used, feat_list, _ = _get_model_for_ticker(ticker)
+        clean_feats = {k: v for k, v in feats.items() if not k.startswith("_")}
+        result["shap"] = explain_prediction(clean_feats, model_used, feat_list)
+    except Exception as exc:
+        print(f"⚠  SHAP failed: {exc}")
+        result["shap"] = []
+
     return result
+
+
+@app.get("/backtest")
+def backtest_ticker(ticker: str, period: str = "3y"):
+    """
+    Run a historical backtest for a ticker.
+    period: 1y | 2y | 3y | 5y
+    """
+    if period not in ("1y","2y","3y","5y"):
+        raise HTTPException(status_code=400, detail="period must be 1y, 2y, 3y, or 5y")
+    if _global_model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded yet.")
+
+    try:
+        from backtest.engine import run_backtest
+        result = run_backtest(
+            ticker       = ticker,
+            model        = _global_model,
+            label_encoder= _label_encoder,
+            metadata     = _metadata,
+            sector_map   = SECTOR_MAP,
+            period       = period,
+        )
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Backtest error: {exc}")
 
 @app.get("/metadata")
 def get_metadata():
