@@ -9,55 +9,72 @@
   .trade-card {
     position:relative; border-radius:var(--radius);
     overflow:hidden; backdrop-filter:blur(10px);
+    border:1px solid var(--border);
+    background:rgba(7,13,20,.88);
   }
   .trade-card::before { content:''; position:absolute; top:0;left:0;right:0;height:1px; background:linear-gradient(90deg,transparent,rgba(0,200,255,.5),transparent); }
-  .trade-card.buy  { background:rgba(0,255,170,.06); border:1px solid rgba(0,255,170,.4); }
-  .trade-card.sell { background:rgba(255,45,85,.06);  border:1px solid rgba(255,45,85,.4); }
+  .trade-card.buy     { border-color:rgba(0,255,170,.45); background:rgba(0,255,170,.04); }
+  .trade-card.sell    { border-color:rgba(255,45,85,.45);  background:rgba(255,45,85,.04); }
+  .trade-card.warn    { border-color:rgba(255,204,0,.4);   background:rgba(255,204,0,.03); }
+  .trade-card.neutral { border-color:var(--border);        background:rgba(7,13,20,.88); }
+  .trade-card.dim     { border-color:var(--border);        background:rgba(7,13,20,.88); }
 
-  .trade-header {
-    text-align:center; padding:18px 20px 14px;
-    border-bottom:1px solid rgba(255,255,255,.06);
-  }
-  .trade-signal-word {
-    font-family:var(--display); font-weight:900;
-    font-size:42px; letter-spacing:8px; line-height:1;
-    animation:signal-in .4s cubic-bezier(.17,.67,.29,1.27) both;
-  }
-  .trade-card.buy  .trade-signal-word { color:var(--buy); text-shadow:0 0 30px rgba(0,255,170,.5); }
+  /* Tier badge */
+  .trade-tier-row { display:flex; align-items:center; justify-content:space-between; padding:10px 20px; border-bottom:1px solid rgba(255,255,255,.06); }
+  .trade-tier-badge { font-family:var(--display); font-size:9px; font-weight:700; letter-spacing:1.5px; padding:3px 10px; border-radius:3px; }
+  .trade-tier-badge.HIGH    { background:rgba(0,255,170,.15); color:var(--buy);  border:1px solid rgba(0,255,170,.4); }
+  .trade-tier-badge.MEDIUM  { background:rgba(255,204,0,.12); color:var(--warn); border:1px solid rgba(255,204,0,.4); }
+  .trade-tier-badge.LOW     { background:rgba(255,255,255,.06); color:var(--dim); border:1px solid var(--border); }
+  .trade-tier-badge.WATCH   { background:rgba(255,45,85,.1); color:var(--sell);  border:1px solid rgba(255,45,85,.3); }
+  .trade-action-text { font-family:var(--mono); font-size:12px; color:var(--dim); }
+
+  /* Signal + guidance */
+  .trade-hero { display:flex; align-items:center; justify-content:space-between; padding:16px 20px 14px; border-bottom:1px solid rgba(255,255,255,.06); flex-wrap:wrap; gap:10px; }
+  .trade-signal-word { font-family:var(--display); font-weight:900; font-size:46px; letter-spacing:8px; line-height:1; animation:signal-in .4s cubic-bezier(.17,.67,.29,1.27) both; }
+  .trade-card.buy  .trade-signal-word { color:var(--buy);  text-shadow:0 0 30px rgba(0,255,170,.5); }
   .trade-card.sell .trade-signal-word { color:var(--sell); text-shadow:0 0 30px rgba(255,45,85,.5); }
+  .trade-card.warn .trade-signal-word,
+  .trade-card.neutral .trade-signal-word,
+  .trade-card.dim .trade-signal-word  { color:var(--warn); font-size:32px; letter-spacing:4px; }
+  .trade-guidance { font-family:var(--mono); font-size:12px; color:var(--dim); max-width:400px; line-height:1.5; }
 
-  .trade-grid {
-    display:grid; grid-template-columns:repeat(4,1fr);
-    gap:0;
-  }
+  /* Vote mini-bars */
+  .trade-votes { display:flex; gap:14px; }
+  .vote-item { display:flex; flex-direction:column; align-items:center; gap:3px; }
+  .vote-label { font-family:var(--display); font-size:8px; letter-spacing:1px; color:var(--dim); }
+  .vote-count { font-family:var(--display); font-size:16px; font-weight:700; }
+  .vote-count.buy{color:var(--buy)} .vote-count.sell{color:var(--sell)} .vote-count.neutral{color:var(--warn)}
+
+  /* Price grid */
+  .trade-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:0; }
   @media(max-width:600px){ .trade-grid{grid-template-columns:repeat(2,1fr)} }
-  .trade-cell {
-    padding:16px 18px;
-    border-right:1px solid rgba(255,255,255,.06);
-    border-top:1px solid rgba(255,255,255,.06);
-  }
-  .trade-cell:last-child { border-right:none; }
-  .trade-cell-label {
-    font-family:var(--display); font-size:9px; font-weight:600;
-    letter-spacing:1.5px; text-transform:uppercase; color:var(--dim);
-    margin-bottom:8px;
-  }
-  .trade-cell-value {
-    font-family:var(--display); font-weight:700;
-    font-size:17px; letter-spacing:0.5px; color:var(--text);
-  }
+  .trade-cell { padding:14px 18px; border-right:1px solid rgba(255,255,255,.05); border-top:1px solid rgba(255,255,255,.05); }
+  .trade-cell:last-child{border-right:none}
+  .trade-cell-label { font-family:var(--display); font-size:9px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--dim); margin-bottom:7px; }
+  .trade-cell-value { font-family:var(--display); font-weight:700; font-size:16px; letter-spacing:.5px; color:var(--text); }
   .trade-cell-value.stop  { color:var(--sell); }
   .trade-cell-value.target{ color:var(--buy);  }
-  .trade-cell-sub {
-    font-family:var(--mono); font-size:11px; color:var(--dim); margin-top:3px;
-  }
-  .trade-cell-sub.neg { color:var(--sell); }
-  .trade-cell-sub.pos { color:var(--buy);  }
-  .trade-disclaimer {
-    text-align:center; padding:8px 20px 10px;
-    font-family:var(--mono); font-size:10px; color:var(--dim);
-    border-top:1px solid rgba(255,255,255,.05);
-  }
+  .trade-cell-value.na    { color:var(--dim); font-size:13px; }
+  .trade-cell-sub { font-family:var(--mono); font-size:11px; color:var(--dim); margin-top:3px; }
+  .trade-cell-sub.neg{color:var(--sell)} .trade-cell-sub.pos{color:var(--buy)}
+
+  /* Engine recs table */
+  .trade-engine-section { padding:12px 20px 14px; border-top:1px solid rgba(255,255,255,.05); }
+  .trade-engine-label { font-family:var(--display); font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--dim); margin-bottom:10px; display:flex; align-items:center; gap:8px; }
+  .trade-engine-label::after { content:''; flex:1; height:1px; background:linear-gradient(90deg,rgba(0,200,255,.2),transparent); }
+  .trade-eng-row { display:flex; align-items:center; gap:10px; padding:5px 0; border-bottom:1px solid rgba(0,200,255,.04); }
+  .trade-eng-row:last-child{border-bottom:none}
+  .trade-eng-dot { width:7px;height:7px;border-radius:50%;flex-shrink:0; }
+  .trade-eng-dot.buy{background:var(--buy);box-shadow:0 0 5px var(--buy)}
+  .trade-eng-dot.sell{background:var(--sell);box-shadow:0 0 5px var(--sell)}
+  .trade-eng-dot.neutral{background:var(--warn)}
+  .trade-eng-name { font-family:var(--display);font-size:10px;font-weight:600;letter-spacing:1px;width:140px;flex-shrink:0;color:var(--text); }
+  .trade-eng-sig  { font-family:var(--display);font-size:9px;font-weight:700;width:70px;flex-shrink:0; }
+  .trade-eng-sig.buy{color:var(--buy)} .trade-eng-sig.sell{color:var(--sell)} .trade-eng-sig.neutral{color:var(--warn)}
+  .trade-eng-wt   { font-family:var(--mono);font-size:10px;color:var(--dim);width:36px;text-align:right;flex-shrink:0; }
+  .trade-eng-det  { font-size:11px;color:var(--dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+
+  .trade-disclaimer { text-align:center; padding:8px 20px 10px; font-family:var(--mono); font-size:10px; color:var(--dim); border-top:1px solid rgba(255,255,255,.04); }
 
 </style>
 <title>QuantPipeline</title>
@@ -862,19 +879,59 @@ function hideResult(){
 }
 
 
-// ── Trade Recommendation Card ─────────────────────────────────────────────────
+// ── Trade Recommendation Card ────────────────────────────────────────────────
 function renderTradeCard(tl) {
   const el = document.getElementById("trade-card");
   if (!tl) { el.style.display = "none"; return; }
 
-  const cls = tl.signal === "BUY" ? "buy" : "sell";
-  const fmt = v => `₹ ${v.toLocaleString("en-IN")}`;
+  const fmt    = v => v != null ? `₹ ${Number(v).toLocaleString("en-IN")}` : "—";
+  const fmtPct = (v, plus=false) => v != null ? `${plus&&v>0?"+":""}${v}%` : "—";
+  const cls    = (tl.action_color || "dim");
+  const tier   = tl.tier || "LOW";
+  const votes  = tl.votes || {};
+  const hasLevels = tl.signal === "BUY" || tl.signal === "SELL";
+
+  const stopCell = hasLevels
+    ? `<div class="trade-cell-value stop">${fmt(tl.stop_loss)}</div>
+       <div class="trade-cell-sub neg">${fmtPct(tl.stop_pct)} risk</div>`
+    : `<div class="trade-cell-value na">Wait for signal</div>
+       <div class="trade-cell-sub">Observe range only</div>`;
+
+  const targetCell = hasLevels
+    ? `<div class="trade-cell-value target">${fmt(tl.target1)}, ${fmt(tl.target2)}</div>
+       <div class="trade-cell-sub pos">${fmtPct(tl.target1_pct,true)} / ${fmtPct(tl.target2_pct,true)}</div>`
+    : `<div class="trade-cell-value na">—</div>
+       <div class="trade-cell-sub">No directional target</div>`;
+
+  const engRows = (tl.engine_recs || []).map(e => {
+    const ec = (e.signal||"NEUTRAL").toLowerCase();
+    return `<div class="trade-eng-row">
+      <div class="trade-eng-dot ${ec}"></div>
+      <div class="trade-eng-name">${e.name}</div>
+      <div class="trade-eng-sig ${ec}">${e.signal}</div>
+      <div class="trade-eng-wt">${e.weight?(e.weight*100).toFixed(0)+"%":"—"}</div>
+      <div class="trade-eng-det" title="${e.detail||""}">${(e.detail||"").slice(0,50)}</div>
+    </div>`;
+  }).join("");
 
   el.className = `trade-card ${cls}`;
   el.style.display = "block";
   el.innerHTML = `
-    <div class="trade-header">
+    <div class="trade-tier-row">
+      <div class="trade-tier-badge ${tier}">${tier} CONFIDENCE</div>
+      <div class="trade-action-text">${tl.action_text||""}</div>
+    </div>
+    <div class="trade-hero">
       <div class="trade-signal-word">${tl.signal}</div>
+      <div>
+        <div class="trade-guidance">${tl.guidance||""}</div>
+        <div class="trade-votes" style="margin-top:10px">
+          <div class="vote-item"><div class="vote-label">BUY</div><div class="vote-count buy">${votes.BUY||0}</div></div>
+          <div class="vote-item"><div class="vote-label">NEUTRAL</div><div class="vote-count neutral">${votes.NEUTRAL||0}</div></div>
+          <div class="vote-item"><div class="vote-label">SELL</div><div class="vote-count sell">${votes.SELL||0}</div></div>
+          <div class="vote-item"><div class="vote-label">CONFIDENCE</div><div class="vote-count" style="color:var(--accent)">${tl.consensus_conf||0}%</div></div>
+        </div>
+      </div>
     </div>
     <div class="trade-grid">
       <div class="trade-cell">
@@ -884,21 +941,23 @@ function renderTradeCard(tl) {
       </div>
       <div class="trade-cell">
         <div class="trade-cell-label">Stop Loss</div>
-        <div class="trade-cell-value stop">${fmt(tl.stop_loss)}</div>
-        <div class="trade-cell-sub neg">${tl.stop_pct}% risk</div>
+        ${stopCell}
       </div>
       <div class="trade-cell">
         <div class="trade-cell-label">Target(s)</div>
-        <div class="trade-cell-value target">${fmt(tl.target1)}, ${fmt(tl.target2)}</div>
-        <div class="trade-cell-sub pos">+${tl.target1_pct}% / +${tl.target2_pct}%</div>
+        ${targetCell}
       </div>
       <div class="trade-cell">
         <div class="trade-cell-label">Time Horizon</div>
-        <div class="trade-cell-value">${tl.time_horizon}</div>
-        <div class="trade-cell-sub">R/R: ${tl.risk_reward}</div>
+        <div class="trade-cell-value">${tl.time_horizon||"—"}</div>
+        <div class="trade-cell-sub">R/R: ${tl.risk_reward||"—"}</div>
       </div>
     </div>
-    <div class="trade-disclaimer">⚠ For informational purposes only. Not financial advice. Always use your own judgment.</div>
+    <div class="trade-engine-section">
+      <div class="trade-engine-label">Engine Breakdown</div>
+      ${engRows || '<div style="color:var(--dim);font-size:11px">No engine data</div>'}
+    </div>
+    <div class="trade-disclaimer">⚠ For informational purposes only · Not financial advice · Always use your own judgment</div>
   `;
 }
 
@@ -1107,31 +1166,7 @@ async function fetchLive(){
     Object.entries(d.features||{}).forEach(([k,v])=>setField(k,v));
     renderFeatTable(d.features,d.last_price,d.as_of);
     showSignal(d,ticker);
-    // Show trade card — use trade_levels from server, or build basic one from signal+price
-    if(d.trade_levels) {
-      renderTradeCard(d.trade_levels);
-    } else if(d.signal && d.signal !== "NEUTRAL" && d.last_price) {
-      // Minimal fallback if server didn't return trade_levels
-      const atr = d.features?.ATR || d.last_price * 0.015;
-      const risk = atr * 1.5;
-      const isBuy = d.signal === "BUY";
-      renderTradeCard({
-        signal: d.signal,
-        entry_low: +(d.last_price * 0.997).toFixed(2),
-        entry_high: +(d.last_price * 1.003).toFixed(2),
-        entry_mid: +d.last_price.toFixed(2),
-        stop_loss: isBuy ? +(d.last_price - risk).toFixed(2) : +(d.last_price + risk).toFixed(2),
-        stop_pct: isBuy ? +(-risk/d.last_price*100).toFixed(2) : +(risk/d.last_price*100).toFixed(2),
-        target1: isBuy ? +(d.last_price + risk).toFixed(2) : +(d.last_price - risk).toFixed(2),
-        target1_pct: isBuy ? +(risk/d.last_price*100).toFixed(2) : +(-risk/d.last_price*100).toFixed(2),
-        target2: isBuy ? +(d.last_price + risk*2).toFixed(2) : +(d.last_price - risk*2).toFixed(2),
-        target2_pct: isBuy ? +(risk*2/d.last_price*100).toFixed(2) : +(-risk*2/d.last_price*100).toFixed(2),
-        time_horizon: "3–5 Days",
-        risk_reward: "1:1 & 2:1",
-      });
-    } else {
-      renderTradeCard(null);
-    }
+    renderTradeCard(d.trade_levels || null);
     if(d.consensus) renderConsensus(d.consensus,d.engines);
     if(d.shap&&d.shap.length>0) renderSHAP(d.shap);
     if(d.fundamentals) renderFundamentals(d.fundamentals);
