@@ -55,7 +55,21 @@ LE_PATH     = os.path.join(DATA_DIR, "label_encoder.pkl")
 META_PATH   = os.path.join(DATA_DIR, "model_metadata.json")
 
 # ── Config ──────────────────────────────────────────────────────────────────────
-SEED_STOCKS  = ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS"]
+SEED_STOCKS = [
+    # Banking & Finance
+    "HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "AXISBANK.NS", "KOTAKBANK.NS",
+    "BAJFINANCE.NS", "BAJAJFINSV.NS",
+    # Information Technology
+    "TCS.NS", "INFY.NS", "WIPRO.NS", "HCLTECH.NS", "TECHM.NS",
+    # Energy
+    "RELIANCE.NS", "ONGC.NS", "BPCL.NS",
+    # FMCG
+    "HINDUNILVR.NS", "ITC.NS", "BRITANNIA.NS",
+    # Automobile
+    "TATAMOTORS.NS", "MARUTI.NS", "BAJAJ-AUTO.NS",
+    # Infrastructure & Others
+    "LT.NS", "NTPC.NS", "SUNPHARMA.NS", "ASIANPAINT.NS",
+]
 PERIOD       = "10y"
 N_SPLITS     = 5       # for global model CV
 BUY_THRESH   = 0.65
