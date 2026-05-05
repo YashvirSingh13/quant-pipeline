@@ -52,8 +52,66 @@
   .metrics-section-label { font-family:var(--display); font-size:8px; letter-spacing:1.5px; text-transform:uppercase; color:var(--dim); margin-bottom:10px; display:flex; align-items:center; gap:8px; }
   .metrics-section-label::after { content:''; flex:1; height:1px; background:linear-gradient(90deg,rgba(0,200,255,.2),transparent); }
   .sector-note { font-family:var(--mono); font-size:10px; color:var(--dim); padding:8px 14px 0; }
+
+  /* ── SHAP panel ── */
+  .shap-bar-wrap { padding:14px; }
+  .shap-row { display:flex; align-items:center; gap:8px; margin-bottom:7px; }
+  .shap-label { font-family:var(--display); font-size:9px; letter-spacing:.8px; color:var(--dim); width:140px; flex-shrink:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .shap-track { flex:1; height:8px; background:rgba(255,255,255,.06); border-radius:99px; overflow:hidden; position:relative; }
+  .shap-fill { height:100%; border-radius:99px; position:absolute; top:0; }
+  .shap-fill.bull { background:linear-gradient(90deg,rgba(0,255,170,.3),var(--buy)); left:50%; }
+  .shap-fill.bear { background:linear-gradient(90deg,var(--sell),rgba(255,45,85,.3)); right:50%; }
+  .shap-val { font-family:var(--mono); font-size:10px; width:50px; text-align:right; flex-shrink:0; }
+  .shap-val.bull { color:var(--buy); }
+  .shap-val.bear { color:var(--sell); }
+  .shap-legend { display:flex; gap:16px; padding:0 14px 12px; font-family:var(--display); font-size:8px; letter-spacing:1px; color:var(--dim); }
+  .shap-legend span { display:flex; align-items:center; gap:5px; }
+  .shap-legend .dot { width:8px;height:8px;border-radius:50%; }
+
+  /* ── Backtest panel ── */
+  .bt-controls { display:flex; align-items:center; gap:10px; padding:14px 18px 0; flex-wrap:wrap; }
+  .period-btns { display:flex; gap:5px; }
+  .period-btn {
+    font-family:var(--display); font-size:9px; font-weight:600;
+    letter-spacing:1.5px; padding:5px 12px; border-radius:3px;
+    cursor:pointer; border:1px solid var(--border); background:transparent;
+    color:var(--dim); transition:all .15s;
+  }
+  .period-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .period-btn.active { background:rgba(0,200,255,.12); border-color:var(--accent); color:var(--accent); }
+
+  .bt-metrics { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; padding:14px 18px; }
+  .bt-metric { background:rgba(0,0,0,.4); border:1px solid var(--border); border-radius:4px; padding:9px 10px; text-align:center; }
+  .bt-metric .bm-label { font-family:var(--display); font-size:8px; letter-spacing:1px; text-transform:uppercase; color:var(--dim); margin-bottom:4px; }
+  .bt-metric .bm-val   { font-family:var(--display); font-size:15px; font-weight:700; }
+  .bt-metric .bm-val.pos { color:var(--buy); }
+  .bt-metric .bm-val.neg { color:var(--sell); }
+  .bt-metric .bm-val.neu { color:var(--accent); }
+
+  .bt-chart-wrap { padding:0 18px 14px; position:relative; height:200px; }
+  .bt-chart-wrap canvas { border-radius:4px; }
+
+  .bt-summary { display:flex; gap:20px; padding:0 18px 14px; font-family:var(--mono); font-size:11px; flex-wrap:wrap; }
+  .bt-summary-item { color:var(--dim); }
+  .bt-summary-item span { color:var(--text); }
+
+  .bt-trades { padding:0 18px 14px; }
+  .bt-trades-label { font-family:var(--display); font-size:8px; letter-spacing:1.5px; text-transform:uppercase; color:var(--dim); margin-bottom:8px; }
+  .trade-row { display:flex; gap:12px; font-size:11px; padding:5px 0; border-bottom:1px solid rgba(0,200,255,.05); }
+  .trade-row:last-child { border-bottom:none; }
+  .trade-date { color:var(--dim); width:85px; }
+  .trade-type { width:80px; font-family:var(--display); font-size:9px; font-weight:600; letter-spacing:1px; }
+  .trade-type.buy  { color:var(--buy); }
+  .trade-type.sell { color:var(--sell); }
+  .trade-price { color:var(--text); flex:1; }
+  .trade-ret   { width:60px; text-align:right; }
+  .trade-ret.pos { color:var(--buy); }
+  .trade-ret.neg { color:var(--sell); }
+  #bt-placeholder { text-align:center; padding:30px 18px; color:var(--dim); font-family:var(--display); font-size:10px; letter-spacing:2px; }
+
 </style>
 <title>QuantPipeline</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;600;700;900&family=Exo+2:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -504,6 +562,16 @@ select, input, button { font-family:var(--mono); font-size:13px; outline:none; }
       </div>
     </div>
 
+
+    <!-- SHAP explanation panel -->
+    <div class="panel" id="shap-panel" style="display:none">
+      <div class="panel-header">◈ Signal Explanation <span style="margin-left:auto;font-size:9px;color:var(--dim)">Why did the model decide this?</span></div>
+      <div class="shap-bar-wrap" id="shap-bars"></div>
+      <div class="shap-legend">
+        <span><div class="dot" style="background:var(--buy)"></div>Pushed toward BUY</span>
+        <span><div class="dot" style="background:var(--sell)"></div>Pushed toward SELL</span>
+      </div>
+    </div>
     <div class="panel" id="feat-panel" style="display:none">
       <div class="panel-header">◈ Live Feature Snapshot <span id="price-chip"></span></div>
       <div class="panel-body" style="padding:0">
@@ -538,6 +606,34 @@ select, input, button { font-family:var(--mono); font-size:13px; outline:none; }
         <span>Retrain on latest data</span>
         <button class="btn btn-secondary" onclick="retrain()" id="btn-retrain">⟳ Retrain</button>
         <span id="retrain-status"></span>
+      </div>
+    </div>
+
+  
+    <!-- Backtest panel -->
+    <div class="panel" id="bt-panel" style="display:none">
+      <div class="panel-header">◈ Historical Backtest
+        <span id="bt-running" style="display:none;margin-left:8px"><span class="spin"></span></span>
+      </div>
+      <div class="bt-controls">
+        <div class="period-btns">
+          <button class="period-btn active" onclick="selectPeriod(this,'1y')">1Y</button>
+          <button class="period-btn" onclick="selectPeriod(this,'2y')">2Y</button>
+          <button class="period-btn" onclick="selectPeriod(this,'3y')">3Y</button>
+          <button class="period-btn" onclick="selectPeriod(this,'5y')">5Y</button>
+        </div>
+        <button class="btn btn-primary" onclick="runBacktest()" id="btn-bt" style="padding:7px 14px;font-size:9px">▶ Run Backtest</button>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--dim)">Cost: 0.15% per side</span>
+      </div>
+      <div id="bt-placeholder">SELECT A PERIOD AND RUN BACKTEST</div>
+      <div id="bt-results" style="display:none">
+        <div class="bt-metrics" id="bt-metrics"></div>
+        <div class="bt-chart-wrap"><canvas id="bt-chart"></canvas></div>
+        <div class="bt-summary" id="bt-summary"></div>
+        <div class="bt-trades">
+          <div class="bt-trades-label">Recent Trades</div>
+          <div id="bt-trade-list"></div>
+        </div>
       </div>
     </div>
 
@@ -609,6 +705,9 @@ function clearFields(){
   hideResult();
   document.getElementById("feat-panel").style.display="none";
   document.getElementById("fund-panel").style.display="none";
+  document.getElementById("shap-panel").style.display="none";
+  document.getElementById("bt-panel").style.display="none";
+  if (_btChart) { _btChart.destroy(); _btChart=null; }
 }
 function getFields(){
   const names=["RSI","MA50","MA200","MA_Cross","Volatility","MACD","MACD_Signal","MACD_Hist","BB_Width","Volume_Log"];
@@ -728,6 +827,132 @@ async function showStocksInfo(){
 }
 
 
+
+// ── SHAP rendering ────────────────────────────────────────────────────────────
+function renderSHAP(shapData) {
+  if (!shapData || shapData.length === 0) return;
+  document.getElementById("shap-panel").style.display = "block";
+  const maxAbs = Math.max(...shapData.map(d => Math.abs(d.shap_value)));
+  document.getElementById("shap-bars").innerHTML = shapData.map(d => {
+    const pct   = maxAbs > 0 ? Math.abs(d.shap_value) / maxAbs * 48 : 0;
+    const dir   = d.direction === "bullish" ? "bull" : "bear";
+    const sign  = d.shap_value > 0 ? "+" : "";
+    return `<div class="shap-row">
+      <div class="shap-label" title="${d.label}">${d.label}</div>
+      <div class="shap-track">
+        <div class="shap-fill ${dir}" style="width:${pct}%"></div>
+      </div>
+      <div class="shap-val ${dir}">${sign}${d.shap_value.toFixed(3)}</div>
+    </div>`;
+  }).join("");
+}
+
+// ── Backtest ───────────────────────────────────────────────────────────────────
+let _btPeriod   = "1y";
+let _btChart    = null;
+let _btTicker   = null;
+
+function selectPeriod(el, period) {
+  document.querySelectorAll(".period-btn").forEach(b => b.classList.remove("active"));
+  el.classList.add("active");
+  _btPeriod = period;
+}
+
+async function runBacktest() {
+  _btTicker = getTickerSymbol();
+  if (!_btTicker) { toast("Run a Live fetch first", "error"); return; }
+
+  document.getElementById("bt-panel").style.display = "block";
+  document.getElementById("bt-placeholder").style.display = "none";
+  document.getElementById("bt-results").style.display = "none";
+  document.getElementById("bt-running").style.display = "inline";
+  document.getElementById("btn-bt").disabled = true;
+
+  try {
+    const r = await fetch(`${API}/backtest?ticker=${encodeURIComponent(_btTicker)}&period=${_btPeriod}`);
+    const d = await r.json();
+    if (!r.ok) { toast(d.detail || "Backtest failed", "error"); return; }
+    renderBacktest(d);
+  } catch(e) {
+    toast("Backtest error: " + e.message, "error");
+  } finally {
+    document.getElementById("bt-running").style.display = "none";
+    document.getElementById("btn-bt").disabled = false;
+  }
+}
+
+function renderBacktest(d) {
+  document.getElementById("bt-results").style.display = "block";
+  const m = d.metrics;
+
+  // Metrics cards
+  const posNeg = v => v > 0 ? "pos" : v < 0 ? "neg" : "neu";
+  const cards = [
+    { label:"CAGR",       val: m.cagr + "%",           cls: posNeg(m.cagr) },
+    { label:"Sharpe",     val: m.sharpe_ratio,          cls: m.sharpe_ratio >= 1 ? "pos" : m.sharpe_ratio < 0 ? "neg" : "neu" },
+    { label:"Max DD",     val: m.max_drawdown + "%",    cls: "neg" },
+    { label:"Win Rate",   val: m.win_rate + "%",        cls: m.win_rate >= 55 ? "pos" : m.win_rate < 45 ? "neg" : "neu" },
+    { label:"Trades",     val: m.total_trades,          cls: "neu" },
+  ];
+  document.getElementById("bt-metrics").innerHTML = cards.map(c =>
+    `<div class="bt-metric"><div class="bm-label">${c.label}</div><div class="bm-val ${c.cls}">${c.val}</div></div>`
+  ).join("");
+
+  // Summary line
+  document.getElementById("bt-summary").innerHTML = [
+    `Alpha vs Nifty: <span style="color:${m.alpha>=0?'var(--buy)':'var(--sell)'}">${m.alpha>=0?'+':''}${m.alpha}%</span>`,
+    `Nifty Return: <span>${m.benchmark_return}%</span>`,
+    `Profit Factor: <span>${m.profit_factor}</span>`,
+    `Avg Trade: <span style="color:${m.avg_trade_return>=0?'var(--buy)':'var(--sell)'}">${m.avg_trade_return>=0?'+':''}${m.avg_trade_return}%</span>`,
+    `Final: <span>₹${m.final_capital?.toLocaleString("en-IN")}</span>`,
+  ].map(s => `<div class="bt-summary-item">${s}</div>`).join("");
+
+  // Chart
+  const ec = d.equity_curve;
+  const labels = ec.dates.filter((_,i) => i % Math.max(1,Math.floor(ec.dates.length/60)) === 0);
+  const sampleIdx = ec.dates.map((_,i) => i).filter(i => i % Math.max(1,Math.floor(ec.dates.length/60)) === 0);
+  const portSamp  = sampleIdx.map(i => ec.portfolio[i]);
+  const niftySamp = sampleIdx.map(i => ec.benchmark[i] || null);
+
+  if (_btChart) { _btChart.destroy(); _btChart = null; }
+  const ctx = document.getElementById("bt-chart").getContext("2d");
+  _btChart = new Chart(ctx, {
+    type:"line",
+    data:{
+      labels,
+      datasets:[
+        { label:"Portfolio", data:portSamp, borderColor:"#00c8ff", backgroundColor:"rgba(0,200,255,0.05)",
+          borderWidth:1.5, pointRadius:0, tension:0.2, fill:true },
+        { label:"Nifty 50",  data:niftySamp, borderColor:"rgba(255,255,255,0.2)", backgroundColor:"transparent",
+          borderWidth:1, pointRadius:0, tension:0.2, borderDash:[4,4] },
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ labels:{ color:"#3a6070", font:{ family:"Orbitron", size:9 }, boxWidth:16 }}},
+      scales:{
+        x:{ ticks:{ color:"#3a6070", font:{size:9}, maxTicksLimit:8 }, grid:{ color:"rgba(0,200,255,0.05)" }},
+        y:{ ticks:{ color:"#3a6070", font:{size:9}, callback:v => v.toFixed(0) }, grid:{ color:"rgba(0,200,255,0.05)" },
+            title:{ display:true, text:"Value (base=100)", color:"#3a6070", font:{size:8} }}
+      }
+    }
+  });
+
+  // Trades
+  const trades = (d.trades || []).filter(t => t.type.includes("SELL")).slice(-10).reverse();
+  document.getElementById("bt-trade-list").innerHTML = trades.length
+    ? trades.map(t => {
+        const ret = t.return_pct;
+        return `<div class="trade-row">
+          <div class="trade-date">${t.date}</div>
+          <div class="trade-type sell">SELL</div>
+          <div class="trade-price">₹${t.price}</div>
+          <div class="trade-ret ${ret>=0?'pos':'neg'}">${ret>=0?'+':''}${ret?.toFixed(2)}%</div>
+        </div>`;
+      }).join("")
+    : '<div style="color:var(--dim);font-size:11px">No completed trades in this period</div>';
+}
+
 // ── Fundamentals render ────────────────────────────────────────────────────────
 const SCORECARD_ORDER = [
   ["performance",   "Performance"],
@@ -814,6 +1039,9 @@ async function fetchLive(){
   hideResult();
   document.getElementById("feat-panel").style.display="none";
   document.getElementById("fund-panel").style.display="none";
+  document.getElementById("shap-panel").style.display="none";
+  document.getElementById("bt-panel").style.display="none";
+  if (_btChart) { _btChart.destroy(); _btChart=null; }
   try{
     const r=await fetch(`${API}/live?ticker=${encodeURIComponent(ticker)}`);
     const d=await r.json();
@@ -834,6 +1062,11 @@ async function fetchLive(){
     } else {
       toast(`Signal ready — ${ticker}`);
     if (d.fundamentals) renderFundamentals(d.fundamentals);
+    if (d.shap && d.shap.length > 0) renderSHAP(d.shap);
+    // Show backtest panel ready for this ticker
+    document.getElementById("bt-panel").style.display = "block";
+    document.getElementById("bt-placeholder").textContent = `SELECT PERIOD → RUN BACKTEST FOR ${ticker}`;
+    document.getElementById("bt-results").style.display = "none";
     }
 
     document.getElementById("stocks-count").textContent=d.total_stocks||"—";
