@@ -703,10 +703,11 @@ def _live_features(ticker: str, df=None) -> dict:
         "Return_5d_lag":  float(close.pct_change(5).iloc[-1]),
         "Return_20d":     float(close.pct_change(20).iloc[-1]),
         # Phase 1: Beta vs Nifty (60d rolling)
-        "Beta_60d":       float(
+        # Fix: .iloc[-1] must be inside float(), not outside
+        "Beta_60d": float((
             close.pct_change().rolling(60).cov(nifty_return.reindex(close.index).fillna(0)) /
             (nifty_return.reindex(close.index).fillna(0).rolling(60).var() + 1e-9)
-        ).iloc[-1] if len(close) > 60 else 1.0,
+        ).iloc[-1]) if len(close) > 60 else 1.0,
         "Rel_Strength":   float(
             close.pct_change(20).iloc[-1] - nifty_close.reindex(close.index).ffill().pct_change(20).iloc[-1]
         ) if len(close) > 20 else 0.0,
