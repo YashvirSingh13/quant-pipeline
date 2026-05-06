@@ -894,17 +894,19 @@ function clearAll(){ _lastLiveFeats = null;
   if(_btChart){_btChart.destroy();_btChart=null;}
 }
 function getFields(){
-  const names=["RSI","MA50","MA200","MA_Cross","Volatility","MACD","MACD_Signal","MACD_Hist","BB_Width","Volume_Log"];
+  // Returns ONLY the 12 fields visible in the form.
+  // All other features (High52W_Pct, Market_Regime, Ticker, Sector, macro etc.)
+  // come from _lastLiveFeats in predictManual, or server defaults if no live fetch.
+  const names=["RSI","MA50","MA200","MA_Cross","Volatility","MACD",
+               "MACD_Signal","MACD_Hist","BB_Width","Volume_Log"];
   const out={};
   for(const n of names){
     const v=parseFloat(document.getElementById("f-"+n).value);
-    if(isNaN(v)) return null; out[n]=v;
+    if(isNaN(v)) return null;
+    out[n]=v;
   }
   out.Volume_Spike=parseFloat(document.getElementById("f-Volume_Spike").value)||1.0;
   out.ATR=parseFloat(document.getElementById("f-ATR").value)||0;
-  out.High52W_Pct=0.95; out.Low52W_Pct=1.05;
-  out.Market_Return=0; out.Market_Regime=1; out.Earnings_Season=0;
-  out.Ticker=0; out.Sector=7;
   return out;
 }
 
@@ -1346,8 +1348,16 @@ async function predictManual(){
   const body = Object.assign({}, _lastLiveFeats || {}, formFields);
   body.ticker = getTickerSymbol() || "";  // keep .NS/.BO so per-stock model is found
 
+  // If no live fetch yet, add minimal fallbacks so model still runs
   if(!_lastLiveFeats){
-    toast("Tip: run Live fetch first for best accuracy — using defaults for macro features","warn");
+    toast("Tip: run Live fetch first for best accuracy — macro features using defaults","warn");
+    body.High52W_Pct   = body.High52W_Pct   ?? 0.95;
+    body.Low52W_Pct    = body.Low52W_Pct    ?? 1.05;
+    body.Market_Return = body.Market_Return  ?? 0;
+    body.Market_Regime = body.Market_Regime  ?? 1;
+    body.Earnings_Season= body.Earnings_Season ?? 0;
+    body.Ticker        = body.Ticker         ?? 0;
+    body.Sector        = body.Sector         ?? 7;
   }
 
   setLoading("btn-predict","predict-icon",true,"▶");
