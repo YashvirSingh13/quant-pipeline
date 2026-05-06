@@ -845,8 +845,128 @@ def list_stocks():
 
 @app.post("/predict")
 def predict_manual(body: PredictBody):
-    feats = body.dict()
+    feats  = body.dict()
     ticker = feats.pop("ticker", "") or "UNKNOWN"
+
+    # ── Fetch live macro context so manual matches live prediction ──────────
+    # Without this, Phase 5B/6 features default to 0, diverging from live.
+    try:
+        from concurrent.futures import ThreadPoolExecutor as _TPE
+        _MSYMS = {
+            "nifty": "^NSEI", "usdinr": "USDINR=X", "crude": "BZ=F",
+            "sp500": "^GSPC", "nasdaq": "^IXIC", "vix_us": "^VIX",
+            "vix_in": "^INDIAVIX", "us10y": "^TNX",
+            "copper": "HG=F", "shanghai": "000001.SS",
+        }
+        def _qdl(sym):
+            try:
+                df = yf.download(sym, period="2mo", interval="1d",
+                                 auto_adjust=True, progress=False)
+                return df["Close"].squeeze() if not df.empty else None
+            except Exception: return None
+
+        with _TPE(max_workers=10) as _ex:
+            _macro = {k: _ex.submit(_qdl, v).result(timeout=12)
+                      for k, v in _MSYMS.items()}
+
+        def _lr(s, p=1):
+            if s is None or len(s) < p+1: return 0.0
+            v = s.pct_change(p).iloc[-1]
+            return float(v) if not np.isnan(v) else 0.0
+
+        def _lv(s, default=0.0):
+            if s is None or s.empty: return default
+            v = s.iloc[-1]; return float(v) if not np.isnan(v) else default
+
+        _now = pd.Timestamp.now()
+        _sc  = feats.get("Sector", 7)
+        _sp5r = _lr(_macro.get("sp500"))
+        _nifr = _lr(_macro.get("nifty"))
+        _usd  = _lr(_macro.get("usdinr"))
+        _crd  = _lr(_macro.get("crude"))
+        _copr = _lr(_macro.get("copper"))
+        _shan = _lr(_macro.get("shanghai"))
+        _nsdq = _lr(_macro.get("nasdaq"))
+
+        _us10y_s = _macro.get("us10y")
+        _us10y_chg = float(_us10y_s.diff().iloc[-1])             if _us10y_s is not None and len(_us10y_s) > 1 else 0.0
+
+        _vixin = _macro.get("vix_in")
+        _vix_roc = float(_vixin.pct_change(5).iloc[-1])             if _vixin is not None and len(_vixin) > 5 else 0.0
+
+        # Phase 1 — momentum (no historical data for manual, use neutral)
+        feats.setdefault("Return_1d",     0.0)
+        feats.setdefault("Return_5d_lag", 0.0)
+        feats.setdefault("Return_20d",    0.0)
+        feats.setdefault("Beta_60d",      1.0)   # market-neutral default
+        feats.setdefault("Rel_Strength",  0.0)
+
+        # Phase 4 — derive from MA values user entered
+        _ma50 = feats.get("MA50", 0) or 0
+        _ma20 = _ma50 * 0.99   # approximate
+        _price = _ma50 * 1.01
+        _bb_w  = feats.get("BB_Width", 0.05) or 0.05
+        feats.setdefault("Dist_MA20",   (_price - _ma20) / (_ma20 + 1e-9) if _ma20 else 0.0)
+        feats.setdefault("Dist_MA50",   (_price - _ma50) / (_ma50 + 1e-9) if _ma50 else 0.0)
+        feats.setdefault("MA20_Slope",  0.0)
+        feats.setdefault("MA50_Slope",  0.0)
+        feats.setdefault("BB_Position", 0.5)
+
+        # Phase 5B — live macro
+        feats.setdefault("USDINR_Return",   _usd)
+        feats.setdefault("USDINR_20d_Mom",  _lr(_macro.get("usdinr"), 20))
+        feats.setdefault("Crude_Return",    _crd)
+        feats.setdefault("Crude_20d_Mom",   _lr(_macro.get("crude"), 20))
+        feats.setdefault("Month_Sin",       float(np.sin(2*np.pi*_now.month/12)))
+        feats.setdefault("Month_Cos",       float(np.cos(2*np.pi*_now.month/12)))
+        feats.setdefault("Is_Budget_Month", int(_now.month == 2))
+        feats.setdefault("Is_Monsoon",      int(_now.month in [6,7,8,9]))
+
+        # Phase 6 — global macro (live)
+        feats.setdefault("SP500_Return",    _sp5r)
+        feats.setdefault("SP500_5d",        _lr(_macro.get("sp500"), 5))
+        feats.setdefault("VIX_US_Level",    _lv(_macro.get("vix_us"), 20.0) / 100)
+        feats.setdefault("VIX_IN_ROC5",     _vix_roc)
+        feats.setdefault("VIX_IN_Pct",      0.5)
+        feats.setdefault("US10Y_Level",     _lv(_us10y_s, 4.0) / 100)
+        feats.setdefault("US10Y_Chg",       _us10y_chg)
+        feats.setdefault("FII_Proxy",       _nifr - _sp5r)
+        feats.setdefault("Copper_Return",   _copr)
+        feats.setdefault("Shanghai_Return", _shan)
+
+        # Phase 6 — sector-conditional (live)
+        feats.setdefault("NASDAQ_IT",       _nsdq * int(_sc == 2))
+        feats.setdefault("USD_Export",      _usd  * int(_sc in [2, 7]))
+        feats.setdefault("Crude_Sector",    _crd  * int(_sc == 4))
+        feats.setdefault("Copper_Sector",   _copr * int(_sc == 8))
+        feats.setdefault("Shanghai_Sector", _shan * int(_sc in [6, 8]))
+        feats.setdefault("Yield_Banking",   _us10y_chg * int(_sc in [0, 1]))
+        feats.setdefault("Monsoon_FMCG",    feats.get("Is_Monsoon", 0) * int(_sc == 5))
+
+    except Exception as _me:
+        print(f"⚠  Macro fetch for manual predict failed: {_me}")
+        # Fallback: fill everything with neutral defaults so model still runs
+        _now = pd.Timestamp.now()
+        for _k, _v in {
+            "Return_1d":0.0, "Return_5d_lag":0.0, "Return_20d":0.0,
+            "Beta_60d":1.0, "Rel_Strength":0.0,
+            "Dist_MA20":0.0, "Dist_MA50":0.0, "MA20_Slope":0.0,
+            "MA50_Slope":0.0, "BB_Position":0.5,
+            "USDINR_Return":0.0, "USDINR_20d_Mom":0.0,
+            "Crude_Return":0.0, "Crude_20d_Mom":0.0,
+            "Month_Sin":float(np.sin(2*np.pi*_now.month/12)),
+            "Month_Cos":float(np.cos(2*np.pi*_now.month/12)),
+            "Is_Budget_Month":int(_now.month==2), "Is_Monsoon":int(_now.month in [6,7,8,9]),
+            "SP500_Return":0.0, "SP500_5d":0.0, "VIX_US_Level":0.20,
+            "VIX_IN_ROC5":0.0, "VIX_IN_Pct":0.5,
+            "US10Y_Level":0.04, "US10Y_Chg":0.0, "FII_Proxy":0.0,
+            "Copper_Return":0.0, "Shanghai_Return":0.0,
+            "NASDAQ_IT":0.0, "USD_Export":0.0, "Crude_Sector":0.0,
+            "Copper_Sector":0.0, "Shanghai_Sector":0.0,
+            "Yield_Banking":0.0, "Monsoon_FMCG":0.0,
+        }.items():
+            feats.setdefault(_k, _v)
+
     try:
         result = _run_predict(ticker, feats)
         return result
