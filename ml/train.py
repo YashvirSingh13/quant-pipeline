@@ -277,9 +277,9 @@ def build_features(df: pd.DataFrame,
     df["Low52W_Pct"]    = close / close.rolling(252).min()
 
     # Market context from Nifty (aligned by date)
-    nifty_c = nifty_close.reindex(df.index).fillna(method="ffill")
+    nifty_c = nifty_close.reindex(df.index).ffill()
     nifty_r = nifty_return.reindex(df.index).fillna(0)
-    nifty_m = nifty_ma200.reindex(df.index).fillna(method="ffill")
+    nifty_m = nifty_ma200.reindex(df.index).ffill()
 
     df["Market_Return"] = nifty_r
     df["Market_Regime"] = (nifty_c > nifty_m).astype(int)
