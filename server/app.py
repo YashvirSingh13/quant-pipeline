@@ -817,13 +817,23 @@ def _run_predict(ticker: str, feats: dict) -> dict:
 
 # ── Schemas ──────────────────────────────────────────────────────────────────────
 class PredictBody(BaseModel):
-    RSI:float; MA50:float; MA200:float; MA_Cross:float; Volatility:float
-    MACD:float; MACD_Signal:float; MACD_Hist:float; BB_Width:float
-    Volume_Log:float; Volume_Spike:float=1.0; ATR:float=0.0
+    """
+    Accepts all 54 model features.
+    extra='allow' means any additional feature sent from the frontend
+    (Phase 1/4/5B/6) is passed through automatically — no need to list them all.
+    """
+    model_config = {"extra": "allow"}
+
+    # Core 19 (always required from form)
+    RSI:float=50.0; MA50:float=0.0; MA200:float=0.0
+    MA_Cross:float=0.0; Volatility:float=0.02
+    MACD:float=0.0; MACD_Signal:float=0.0; MACD_Hist:float=0.0
+    BB_Width:float=0.05; Volume_Log:float=14.0
+    Volume_Spike:float=1.0; ATR:float=0.0
     High52W_Pct:float=0.95; Low52W_Pct:float=1.05
     Market_Return:float=0.0; Market_Regime:int=1; Earnings_Season:int=0
     Ticker:int=0; Sector:int=7
-    ticker:str = ""   # for model selection
+    ticker:str=""   # for model selection
 
 # ── Routes ───────────────────────────────────────────────────────────────────────
 @app.get("/health")
