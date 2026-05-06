@@ -496,17 +496,20 @@ def _get_model_for_ticker(ticker: str):
 
 # ── Helpers: artefact loading ───────────────────────────────────────────────────
 def _strip_model_feature_names(model):
-    """Strip whitespace from XGBoost's stored feature names — fixes legacy models."""
+    """
+    Strip whitespace from XGBoost booster feature names — fixes legacy models.
+
+    Note: feature_names_in_ is read-only in newer sklearn/XGBoost versions,
+    so we only strip the booster's internal list. Since _run_predict always
+    passes numpy arrays (.values), XGBoost skips name validation entirely —
+    this strip is just a belt-and-suspenders cleanup for logging clarity.
+    """
     try:
-        if hasattr(model, "feature_names_in_"):
-            model.feature_names_in_ = np.array(
-                [f.strip() for f in model.feature_names_in_]
-            )
         booster = model.get_booster()
         if booster.feature_names:
             booster.feature_names = [f.strip() for f in booster.feature_names]
     except Exception as e:
-        print(f"⚠  Could not strip feature names: {e}")
+        print(f"⚠  Could not strip booster feature names: {e}")
 
 def _reload_artefacts():
     global _global_model, _label_encoder, _metadata, _stock_models
