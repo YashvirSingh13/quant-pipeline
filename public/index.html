@@ -801,6 +801,7 @@ select,input,button { font-family:var(--mono);font-size:15px;outline:none; }
 
 <script>
 const API = "";
+let _lastLiveFeats = null;   // stores complete 54-feature set from last live fetch
 const FEAT_LABELS = {
   RSI:"RSI (14)", MA50:"MA 50", MA200:"MA 200", MA_Cross:"MA Cross",
   Volatility:"Volatility (10d)", MACD:"MACD Line", MACD_Signal:"MACD Signal",
@@ -884,7 +885,7 @@ function clearFields(){
     const el=document.getElementById("f-"+f); if(el){el.value="";el.classList.remove("populated");}
   });
 }
-function clearAll(){
+function clearAll(){ _lastLiveFeats = null;
   clearFields(); hideResult();
   ["feat-panel","fund-panel","shap-panel","consensus-panel","horizon-panel","bt-panel","trade-card","consensus-macro-row"].forEach(id=>{
     document.getElementById(id).style.display="none";
@@ -1265,6 +1266,9 @@ async function fetchLive(){
     renderFeatTable(d.features,d.last_price,d.as_of);
     showSignal(d,ticker);
     renderTradeCard(d.trade_levels || null);
+    // Store full 54-feature set so manual predict can use them as base
+    if(d.features) _lastLiveFeats = Object.assign({}, d.features,
+      {_ticker: ticker, Ticker: d.features.Ticker||0, Sector: d.features.Sector||7});
     if(d.consensus) renderConsensus(d.consensus,d.engines);
     // Macro context row
     if(d.features){
@@ -1324,18 +1328,28 @@ async function fetchLive(){
     document.getElementById("bt-placeholder").textContent=`SELECT PERIOD → RUN BACKTEST FOR ${ticker}`;
     document.getElementById("bt-results").style.display="none";
   }catch(e){
-  const msg = e.message.includes("pattern") || e.message.includes("JSON")
-    ? "Server still starting up — please wait 1–2 min and try again"
-    : "Network error: "+e.message;
-  toast(msg,"error");
-}
+    const msg=e.message&&(e.message.includes("pattern")||e.message.includes("JSON")||e.message.includes("Unexpected"))
+      ?"Server still starting up — please wait 1–2 min and try again"
+      :"Network error: "+e.message;
+    toast(msg,"error");
+  }
   finally{setLoading("btn-live","live-icon",false,"↻");}
 }
 
 // ── Manual predict ────────────────────────────────────────────────────────────
 async function predictManual(){
-  const body=getFields();
-  if(!body){toast("Fill in all fields first","error");return;}
+  const formFields=getFields();
+  if(!formFields){toast("Fill in all fields first","error");return;}
+
+  // Merge: live feature base (all 54) + user's form overrides
+  // This ensures Phase 1/4/5B/6 features match the live context
+  const body = Object.assign({}, _lastLiveFeats || {}, formFields);
+  body.ticker = (getTickerSymbol() || "").replace(/\.NS$|\.BO$/,"");
+
+  if(!_lastLiveFeats){
+    toast("Tip: run Live fetch first for best accuracy — using defaults for macro features","warn");
+  }
+
   setLoading("btn-predict","predict-icon",true,"▶");
   hideResult();
   try{
@@ -1343,7 +1357,12 @@ async function predictManual(){
     const d=await r.json();
     if(!r.ok){toast(d.detail||"Prediction failed","error");return;}
     showSignal(d,null);
-  }catch(e){toast("Network error: "+e.message,"error");}
+  }catch(e){
+    const msg=e.message&&(e.message.includes("pattern")||e.message.includes("JSON")||e.message.includes("Unexpected"))
+      ?"Server still starting up — please wait 1–2 min and try again"
+      :"Network error: "+e.message;
+    toast(msg,"error");
+  }
   finally{setLoading("btn-predict","predict-icon",false,"▶");}
 }
 
@@ -1356,7 +1375,7 @@ async function retrain(){
     if(!r.ok){toast(d.detail||"Retrain failed","error");return;}
     status.textContent="TRAINING…";toast("Full retrain started — ~5 min.");
     pollRetrain(btn,status);
-  }catch(e){toast("Network error: "+e.message,"error");btn.disabled=false;btn.innerHTML="⟳ Retrain";status.textContent="";}
+  }catch(e){const msg=e.message&&(e.message.includes("pattern")||e.message.includes("JSON")||e.message.includes("Unexpected"))?"Server still starting up — please wait 1–2 min and try again":"Network error: "+e.message;toast(msg,"error");btn.disabled=false;btn.innerHTML="⟳ Retrain";status.textContent="";}
 }
 async function pollRetrain(btn,status){
   const r=await fetch(`${API}/retrain/status`);const d=await r.json();
