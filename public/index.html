@@ -1344,7 +1344,7 @@ async function predictManual(){
   // Merge: live feature base (all 54) + user's form overrides
   // This ensures Phase 1/4/5B/6 features match the live context
   const body = Object.assign({}, _lastLiveFeats || {}, formFields);
-  body.ticker = (getTickerSymbol() || "").replace(/\.NS$|\.BO$/,"");
+  body.ticker = getTickerSymbol() || "";  // keep .NS/.BO so per-stock model is found
 
   if(!_lastLiveFeats){
     toast("Tip: run Live fetch first for best accuracy — using defaults for macro features","warn");
