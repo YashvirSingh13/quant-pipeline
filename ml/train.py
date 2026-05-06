@@ -82,7 +82,7 @@ SEED_STOCKS = [
     # Other / Consumer / Telecom
     "ASIANPAINT.NS", "TITAN.NS", "TRENT.NS", "BHARTIARTL.NS",
 ]
-PERIOD       = "10y"
+PERIOD       = "5y"
 N_SPLITS     = 5       # for global model CV
 BUY_THRESH   = 0.65
 SELL_THRESH  = 0.35
@@ -518,10 +518,18 @@ def train():
 
     for s in stocks:
         print(f"⬇  Downloading {s} …")
-        raw = yf.download(s, period=PERIOD, interval="1d",
-                          auto_adjust=True, progress=False)
-        if raw.empty or len(raw) < 300:
-            print(f"   ⚠  Insufficient data for {s}, skipping.")
+        raw = None
+        for _attempt in range(3):   # retry up to 3 times for rate-limit 404s
+            try:
+                raw = yf.download(s, period=PERIOD, interval="1d",
+                                  auto_adjust=True, progress=False)
+                if not raw.empty:
+                    break
+            except Exception:
+                pass
+            import time as _time; _time.sleep(2)  # 2s back-off between retries
+        if raw is None or raw.empty or len(raw) < 100:
+            print(f"   ⚠  Insufficient data for {s} after retries, skipping.")
             failed.append(s)
             continue
 
