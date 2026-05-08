@@ -302,27 +302,77 @@ def run_backtest(ticker, model, label_encoder, metadata, sector_map, period="3y"
     trades      = []
     equity      = []   # portfolio value each day
 
+    # ── Phase 10: Trailing stop state ────────────────────────────────────────
+    trail_stop      = 0.0    # current trailing stop price
+    trail_target1   = 0.0    # first target (move stop to breakeven)
+    trail_target2   = 0.0    # second target (lock in profit)
+    partial_exited  = False  # did we take partial profit at T1?
+
+    # Pre-compute ATR aligned to prices index
+    price_series    = raw["Close"].squeeze().reindex(prices.index).ffill()
+    high_series     = raw["High"].squeeze().reindex(prices.index).ffill()
+    low_series      = raw["Low"].squeeze().reindex(prices.index).ffill()
+    atr_series      = _atr(high_series, low_series, price_series)
+
     for i,(date,price) in enumerate(prices.items()):
         p=float(price)
         if np.isnan(p):
-            equity.append({"date":str(date.date()),"value":round(capital if not in_pos else shares*p,2)})
+            equity.append({"date":str(date.date()),"value":round(capital if not in_pos else shares*p,2),"in_pos":in_pos})
             continue
         sig=signals[i]
+        atr_val = float(atr_series.get(date, atr_series.iloc[-1] if len(atr_series) else 0) or 0)
 
+        # ── Entry ────────────────────────────────────────────────────────────
         if sig=="BUY" and not in_pos:
-            cost    = capital*TRANSACTION_COST
-            shares  = (capital-cost)/p
-            entry_price=p; in_pos=True; capital=0
-            trades.append({"date":str(date.date()),"type":"BUY","price":round(p,2)})
+            cost         = capital*TRANSACTION_COST
+            shares       = (capital-cost)/p
+            entry_price  = p; in_pos=True; capital=0
+            partial_exited = False
+            # Set initial trailing stop and targets
+            trail_stop   = p - 1.5 * atr_val if atr_val > 0 else p * 0.97
+            trail_target1= p + 1.5 * atr_val if atr_val > 0 else p * 1.03
+            trail_target2= p + 3.0 * atr_val if atr_val > 0 else p * 1.06
+            trades.append({"date":str(date.date()),"type":"BUY","price":round(p,2),
+                           "stop":round(trail_stop,2),"t1":round(trail_target1,2)})
 
-        elif sig=="SELL" and in_pos:
-            gross   = shares*p
-            cost    = gross*TRANSACTION_COST
-            capital = gross-cost
-            ret_pct = (capital/(shares*entry_price)-1)*100
-            shares=0; in_pos=False
-            trades.append({"date":str(date.date()),"type":"SELL",
-                           "price":round(p,2),"return_pct":round(ret_pct,2)})
+        elif in_pos:
+            # ── Trail stop management (Phase 10) ─────────────────────────────
+            if atr_val > 0:
+                # After T1 hit: move stop to breakeven
+                if p >= trail_target1 and not partial_exited:
+                    trail_stop     = max(trail_stop, entry_price)
+                    partial_exited = True
+                # After T2 hit: lock in half ATR profit
+                if p >= trail_target2:
+                    trail_stop = max(trail_stop, entry_price + 0.5*atr_val)
+                # Normal trail: move stop up if price moves up (ratchet)
+                new_trail = p - 1.5*atr_val
+                trail_stop = max(trail_stop, new_trail)
+
+            # ── Exit conditions ───────────────────────────────────────────────
+            exit_triggered = False
+            exit_reason    = ""
+
+            # 1. Trailing stop hit
+            if p <= trail_stop and trail_stop > 0:
+                exit_triggered = True; exit_reason = "Trail Stop"
+            # 2. Model SELL signal
+            elif sig == "SELL":
+                exit_triggered = True; exit_reason = "SELL Signal"
+            # 3. VIX spike — exit if regime turns VOLATILE (regime filter Phase 10)
+            elif macro.get("vix_in") is not None:
+                vix_now = float(macro["vix_in"].reindex([date]).ffill().iloc[0])                           if date in macro["vix_in"].index else 0
+                if vix_now > 28:
+                    exit_triggered = True; exit_reason = "VIX Crisis Exit"
+
+            if exit_triggered:
+                gross   = shares*p
+                cost    = gross*TRANSACTION_COST
+                capital = gross-cost
+                ret_pct = (capital/(shares*entry_price)-1)*100
+                shares=0; in_pos=False; trail_stop=0
+                trades.append({"date":str(date.date()),"type":f"SELL ({exit_reason})",
+                               "price":round(p,2),"return_pct":round(ret_pct,2)})
 
         pv = shares*p if in_pos else capital
         equity.append({"date":str(date.date()),"value":round(pv,2),"in_pos":in_pos})
