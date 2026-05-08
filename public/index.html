@@ -170,6 +170,20 @@
   .nse-breadth-bar{height:5px;background:rgba(255,255,255,.07);border-radius:99px;overflow:hidden;margin-top:6px;}
   .nse-breadth-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--sell),var(--warn),var(--buy));}
 
+
+  /* ── Registry modal ── */
+  .modal-bg { position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px); }
+  .modal-bg.show { display:flex; }
+  .modal-box { background:var(--surface);border:1px solid var(--border-hi);border-radius:var(--radius);padding:24px;width:90%;max-width:520px;position:relative; }
+  .modal-box::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent)}
+  .modal-title { font-family:var(--display);font-size:13px;font-weight:700;letter-spacing:2px;color:var(--accent);margin-bottom:14px; }
+  .modal-body  { font-size:14px;color:var(--dim);line-height:1.7;margin-bottom:16px; }
+  .modal-textarea { width:100%;background:rgba(0,0,0,.5);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:10px;font-family:var(--mono);font-size:12px;height:120px;resize:vertical;margin-bottom:12px; }
+  .modal-textarea:focus{border-color:var(--accent);outline:none}
+  .modal-btns { display:flex;gap:8px;flex-wrap:wrap; }
+  .modal-close { position:absolute;top:12px;right:16px;cursor:pointer;color:var(--dim);font-size:18px; }
+  .modal-close:hover{color:var(--text)}
+
 </style>
 <title>QuantPipeline</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -911,6 +925,22 @@ select,input,button { font-family:var(--mono);font-size:20px;outline:none; }
   </div>
 
 </main>
+
+<!-- Registry Modal -->
+<div class="modal-bg" id="registry-modal">
+  <div class="modal-box">
+    <div class="modal-close" onclick="closeRegistryModal()">✕</div>
+    <div class="modal-title">◈ Stock Registry Manager</div>
+    <div class="modal-body" id="registry-modal-body">Loading…</div>
+    <textarea class="modal-textarea" id="registry-textarea" placeholder="Paste exported JSON here to import..."></textarea>
+    <div class="modal-btns">
+      <button class="btn btn-primary" onclick="exportRegistry()">⬇ Export JSON</button>
+      <button class="btn btn-success" onclick="importRegistry()">⬆ Import JSON</button>
+      <button class="btn btn-secondary" onclick="closeRegistryModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -944,16 +974,23 @@ const FEAT_LABELS = {
   Monsoon_FMCG:"Monsoon × FMCG Signal",
   PCR:"Put/Call Ratio (NSE)", PCR_Signal:"PCR Z-Score Signal",
   FII_Net_Norm:"FII Net Flow (Normalised)", DII_Net_Norm:"DII Net Flow (Normalised)",
-  Breadth_Pct:"Market Breadth (% Above 50MA)", AdvDec_Ratio:"Advance/Decline %"
+  Breadth_Pct:"Market Breadth (% Above 50MA)", AdvDec_Ratio:"Advance/Decline %",
+  RSI_lag1:"RSI (Yesterday)", RSI_lag3:"RSI (3 Days Ago)", MACD_Hist_lag1:"MACD Hist (Yesterday)",
+  Return_lag2:"Return (2 Days Ago)", Vol_Spike_lag1:"Volume Spike (Yesterday)",
+  Max_Pain_Dist:"Max Pain Distance %", EPS_Surprise:"EPS Growth QoQ %",
+  Promoter_Change:"Promoter Holding Change", Sector_Momentum:"Sector Rank (0-1)",
+  Sector_Rel_Perf:"Sector vs Nifty 20d"
 };
 const ENGINE_LABELS = {
   xgboost:"XGBoost ML", multi_timeframe:"Multi-Timeframe",
   mean_reversion:"Mean Reversion", sentiment:"Sentiment",
   fundamental_rank:"Fundamental", sector_corr:"Sector Correlation",
   leader_lagger:"Leader-Lagger", hmm_regime:"HMM Regime",
+  sector_rotation:"Sector Rotation", eps_fundamental:"EPS + Promoter",
 };
 const ENGINE_ORDER = ["xgboost","multi_timeframe","mean_reversion","sentiment",
-                      "fundamental_rank","sector_corr","leader_lagger"];
+                      "fundamental_rank","sector_corr","leader_lagger",
+                      "sector_rotation","eps_fundamental"];
 
 // ── Clock ────────────────────────────────────────────────────────────────────
 function updateClock(){ document.getElementById("live-clock").textContent=new Date().toLocaleTimeString("en-IN",{hour12:false}); }
@@ -1388,7 +1425,11 @@ async function fetchLive(){
     // Store full 54-feature set so manual predict can use them as base
     if(d.features) _lastLiveFeats = Object.assign({}, d.features,
       {_ticker: ticker, Ticker: d.features.Ticker||0, Sector: d.features.Sector||7});
-    if(d.nse_data) renderNseData(d.nse_data);
+    if(d.nse_data) {
+      const nseWithRotation = Object.assign({}, d.nse_data,
+        {sector_rotation: d.engines?.sector_rotation});
+      renderNseData(nseWithRotation);
+    }
     if(d.consensus) renderConsensus(d.consensus,d.engines);
     // Macro context row
     if(d.features){
@@ -1628,6 +1669,17 @@ function renderNseData(nseData) {
   const diiColor = fii.dii_net > 500 ? "var(--buy)" : fii.dii_net < -500 ? "var(--sell)" : "var(--warn)";
   const brdColor = brd.breadth_pct > 60 ? "var(--buy)" : brd.breadth_pct < 40 ? "var(--sell)" : "var(--warn)";
 
+  // Add sector rotation card if available
+  const secRotData = nseData.sector_rotation;  // passed separately
+  const srCard = secRotData ? `
+    <div class="nse-card">
+      <div class="nc-label">Sector Rotation</div>
+      <div class="nc-val" style="color:var(--accent)">${secRotData.regime_type||"—"}</div>
+      <div class="nc-sub">Top: ${(secRotData.top_sectors||[]).slice(0,2).join(", ")}</div>
+      <div class="nc-sub">Weak: ${(secRotData.bottom_sectors||[]).slice(0,2).join(", ")}</div>
+      <span class="nc-sig ${secRotData.signal||'NEUTRAL'}">${secRotData.signal||"—"}</span>
+    </div>` : "";
+
   grid.innerHTML = `
     <div class="nse-card">
       <div class="nc-label">Put/Call Ratio</div>
@@ -1652,7 +1704,68 @@ function renderNseData(nseData) {
       </div>
       <span class="nc-sig ${brd.signal||'NEUTRAL'}">${brd.signal||'—'}</span>
     </div>
+    ${srCard}
   `;
+}
+
+
+// ── Registry Manager ─────────────────────────────────────────────────────────
+async function showStocksInfo() {
+  document.getElementById("registry-modal").classList.add("show");
+  document.getElementById("registry-modal-body").textContent = "Loading registry…";
+  document.getElementById("registry-textarea").value = "";
+  try {
+    const r = await fetch(`${API}/registry/export`);
+    const d = await r.json();
+    document.getElementById("registry-modal-body").innerHTML =
+      `<b style="color:var(--accent)">${d.count} stocks</b> in registry · exported ${new Date(d.exported_at).toLocaleString("en-IN")}<br>
+       <span style="font-size:12px">Copy the JSON below to save your stock list. If Railway resets, import it back to restore all stocks.</span>`;
+    document.getElementById("registry-textarea").value = JSON.stringify(d, null, 2);
+  } catch(e) {
+    document.getElementById("registry-modal-body").textContent = "Error loading registry: "+e.message;
+  }
+}
+
+function closeRegistryModal() {
+  document.getElementById("registry-modal").classList.remove("show");
+}
+
+async function exportRegistry() {
+  const ta = document.getElementById("registry-textarea");
+  if (!ta.value) { toast("Load the registry first","error"); return; }
+  // Create download
+  const blob = new Blob([ta.value], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `quant-registry-${new Date().toISOString().split("T")[0]}.json`;
+  a.click();
+  toast("Registry downloaded");
+}
+
+async function importRegistry() {
+  const ta = document.getElementById("registry-textarea");
+  const raw = ta.value.trim();
+  if (!raw) { toast("Paste your exported JSON first","error"); return; }
+
+  let parsed;
+  try { parsed = JSON.parse(raw); }
+  catch(e) { toast("Invalid JSON — paste the full export file","error"); return; }
+
+  const stocks = parsed.stocks || parsed;
+  if (!Array.isArray(stocks)) { toast("No stocks array found in JSON","error"); return; }
+
+  const r = await fetch(`${API}/registry/import`, {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({stocks})
+  });
+  const d = await r.json();
+  if (!r.ok) { toast(d.detail||"Import failed","error"); return; }
+  toast(`✓ Registry restored — ${d.total} stocks now tracked`, "");
+  document.getElementById("stocks-count").textContent = d.total;
+  document.getElementById("registry-modal-body").innerHTML =
+    `<b style="color:var(--buy)">✓ ${d.message}</b><br>${d.added} new stocks added.`;
+  showNotif(`Registry imported — ${d.total} stocks now tracked`, "success");
 }
 
 // ── Notification System ───────────────────────────────────────────────────────
@@ -1810,6 +1923,31 @@ function renderBtExtra(d) {
       <div class="stress-item"><div class="sv" style="color:var(--${posNeg(ss['cost_0.10pct'])?'buy':'sell'})">${ss['cost_0.10pct']}%</div><div class="sl">0.1% per side</div></div>
       <div class="stress-item"><div class="sv" style="color:var(--${posNeg(ss['cost_0.30pct'])?'buy':'sell'})">${ss['cost_0.30pct']}%</div><div class="sl">0.3% per side</div></div>
       <div class="stress-item"><div class="sv" style="color:var(--${posNeg(ss['cost_0.50pct'])?'buy':'sell'})">${ss['cost_0.50pct']}%</div><div class="sl">0.5% per side</div></div>
+    </div>`;
+  }
+
+  // Phase 10: Out-of-sample
+  const oos = d.out_of_sample;
+  if (oos && oos.return_pct !== undefined) {
+    const oosColor = oos.alpha >= 0 ? "var(--buy)" : "var(--sell)";
+    html += `<div class="bt-section-label">Out-of-Sample Validation (last 20% of data — never seen during training)</div>
+    <div class="mc-row">
+      <div class="mc-item"><div class="mc-val" style="color:${oos.return_pct>=0?"var(--buy)":"var(--sell)"}">${oos.return_pct>=0?"+":""}${oos.return_pct}%</div><div class="mc-lbl">OOS Return</div></div>
+      <div class="mc-item"><div class="mc-val" style="color:var(--dim)">${oos.benchmark}%</div><div class="mc-lbl">OOS Benchmark</div></div>
+      <div class="mc-item"><div class="mc-val" style="color:${oosColor}">${oos.alpha>=0?"+":""}${oos.alpha}%</div><div class="mc-lbl">OOS Alpha</div></div>
+      <div class="mc-item"><div class="mc-val" style="color:var(--dim)">${oos.n_days} days</div><div class="mc-lbl">${oos.start} → ${oos.end}</div></div>
+    </div>`;
+  }
+
+  // Phase 10: Fusion comparison
+  const fc = d.fusion_comparison;
+  if (fc && fc.xgboost_only_cagr !== undefined) {
+    const impColor = fc.improvement >= 0 ? "var(--buy)" : "var(--sell)";
+    html += `<div class="bt-section-label">XGBoost vs Mini-Fusion Comparison</div>
+    <div class="stress-row">
+      <div class="stress-item"><div class="sv" style="color:var(--accent)">${fc.xgboost_only_cagr}%</div><div class="sl">XGBoost Only CAGR</div></div>
+      <div class="stress-item"><div class="sv" style="color:var(--buy)">${fc.mini_fusion_cagr}%</div><div class="sl">Mini-Fusion CAGR</div></div>
+      <div class="stress-item"><div class="sv" style="color:${impColor}">${fc.improvement>=0?"+":""}${fc.improvement}%</div><div class="sl">Fusion Improvement</div></div>
     </div>`;
   }
 
