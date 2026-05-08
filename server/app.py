@@ -439,6 +439,37 @@ BUY_THRESH  = 0.65
 SELL_THRESH = 0.35
 
 # ── App ─────────────────────────────────────────────────────────────────────────
+
+import math as _math
+
+def _json_safe(obj):
+    """Recursively sanitise response dicts for JSON serialisation.
+    Handles: numpy types, pandas Timestamps, NaN, inf, -inf."""
+    import numpy as np
+    import pandas as pd
+    if isinstance(obj, dict):
+        return {str(k): _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(i) for i in obj]
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        v = float(obj)
+        if _math.isnan(v) or _math.isinf(v):
+            return None
+        return v
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    if isinstance(obj, np.ndarray):
+        return [_json_safe(x) for x in obj.tolist()]
+    if isinstance(obj, pd.Timestamp):
+        return str(obj.date())
+    if isinstance(obj, float):
+        if _math.isnan(obj) or _math.isinf(obj):
+            return None
+        return obj
+    return obj
+
 app = FastAPI(title="Quant Pipeline API", version="4.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"],
                    allow_methods=["*"], allow_headers=["*"])
@@ -909,8 +940,16 @@ def predict_manual(body: PredictBody):
     ticker = feats.pop("ticker", "") or "UNKNOWN"
 
     # ── Fetch live macro context so manual matches live prediction ──────────
-    # Without this, Phase 5B/6 features default to 0, diverging from live.
-    try:
+    # Skip macro fetch entirely if _lastLiveFeats sent all features already
+    _KEY_MACRO_FEATS = ["SP500_Return","VIX_US_Level","US10Y_Level",
+                        "FII_Proxy","Copper_Return","Shanghai_Return"]
+    _has_all_macro = all(feats.get(k) is not None for k in _KEY_MACRO_FEATS)
+
+    if _has_all_macro:
+        # Frontend sent complete live features — use them as-is, no refetch
+        print("✓ Manual predict: using live features from frontend (no macro refetch)")
+    else:
+      try:
         from concurrent.futures import ThreadPoolExecutor as _TPE
         _MSYMS = {
             "nifty": "^NSEI", "usdinr": "USDINR=X", "crude": "BZ=F",
@@ -1003,7 +1042,7 @@ def predict_manual(body: PredictBody):
         feats.setdefault("Yield_Banking",   _us10y_chg * int(_sc in [0, 1]))
         feats.setdefault("Monsoon_FMCG",    feats.get("Is_Monsoon", 0) * int(_sc == 5))
 
-    except Exception as _me:
+      except Exception as _me:
         print(f"⚠  Macro fetch for manual predict failed: {_me}")
         # Fallback: fill everything with neutral defaults so model still runs
         _now = pd.Timestamp.now()
@@ -1219,12 +1258,16 @@ def predict_live(ticker: str):
         fut_secr = ex.submit(_safe, sector_rotation.run, ticker, SECTOR_MAP.get(ticker, 7))
         fut_eps  = ex.submit(_safe, eps_data.fetch_eps_data, ticker)
 
-        mr_res   = fut_mr.result(timeout=15)
-        mtf_res  = fut_mtf.result(timeout=15)
-        sen_res  = fut_sen.result(timeout=15)
-        vix_res  = fut_vix.result(timeout=15)
-        fun_res  = fut_fun.result(timeout=15)
-        hmm_res  = fut_hmm.result(timeout=20)
+        mr_res   = fut_mr.result(timeout=25)
+        mtf_res  = fut_mtf.result(timeout=25)
+        sen_res  = fut_sen.result(timeout=25)
+        vix_res  = fut_vix.result(timeout=25)
+        fun_res  = fut_fun.result(timeout=25)
+        try:
+            hmm_res  = fut_hmm.result(timeout=45)
+        except Exception:
+            hmm_res  = {"engine":"hmm_regime","signal":"NEUTRAL","score":0.5,
+                        "regime":"UNKNOWN","detail":"HMM timeout — using neutral"}
         sec_res  = fut_sec.result(timeout=20)
         ll_res   = fut_ll.result(timeout=20)
         nse_res  = fut_nse.result(timeout=20)
@@ -1344,7 +1387,7 @@ def predict_live(ticker: str):
         print(f"⚠  Fundamentals failed: {exc}")
 
     # ── Build response ────────────────────────────────────────────────────────
-    return {
+    return _json_safe({
         # ML signal (from XGBoost alone)
         **ml_result,
         # Fusion signal (all engines combined) — this is the primary signal
@@ -1375,7 +1418,11 @@ def predict_live(ticker: str):
         "new_stock":      is_new,
         "learning":       is_new or _learning,
         "total_stocks":   len(_load_known_stocks()),
-    }
+    })
+
+
+
+
 
 
 
