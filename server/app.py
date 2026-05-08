@@ -20,7 +20,7 @@ import numpy as np
 import joblib
 import yfinance as yf
 import pandas as pd
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -935,495 +935,63 @@ def list_stocks():
             "per_stock_trained": per_stock_trained, "total": len(stocks)}
 
 @app.post("/predict")
-def predict_manual(body: PredictBody):
-    feats  = body.dict()
-    ticker = feats.pop("ticker", "") or "UNKNOWN"
+async def predict_manual(request: Request):
+    """
+    Manual prediction. Downloads fresh stock data for the ticker,
+    computes all 69 features identically to the live endpoint,
+    then overrides the 12 visible form fields with the user's values.
+    This guarantees identical results to live when fields are unchanged.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
 
-    # ── Fetch live macro context so manual matches live prediction ──────────
-    # Skip macro fetch entirely if _lastLiveFeats sent all features already
-    _KEY_MACRO_FEATS = ["SP500_Return","VIX_US_Level","US10Y_Level",
-                        "FII_Proxy","Copper_Return","Shanghai_Return"]
-    _has_all_macro = all(feats.get(k) is not None for k in _KEY_MACRO_FEATS)
+    ticker = body.get("ticker","") or "UNKNOWN"
+    # Normalise ticker
+    if not ticker.endswith(".NS") and not ticker.endswith(".BO"):
+        ticker = ticker + ".NS"
 
-    if _has_all_macro:
-        # Frontend sent complete live features — use them as-is, no refetch
-        print("✓ Manual predict: using live features from frontend (no macro refetch)")
-    else:
-      try:
-        from concurrent.futures import ThreadPoolExecutor as _TPE
-        _MSYMS = {
-            "nifty": "^NSEI", "usdinr": "USDINR=X", "crude": "BZ=F",
-            "sp500": "^GSPC", "nasdaq": "^IXIC", "vix_us": "^VIX",
-            "vix_in": "^INDIAVIX", "us10y": "^TNX",
-            "copper": "HG=F", "shanghai": "000001.SS",
-        }
-        def _qdl(sym):
-            try:
-                df = yf.download(sym, period="2mo", interval="1d",
-                                 auto_adjust=True, progress=False)
-                return df["Close"].squeeze() if not df.empty else None
-            except Exception: return None
+    try:
+        # ── Compute features identically to live endpoint ─────────────────────
+        feats = _live_features(ticker)
 
-        with _TPE(max_workers=10) as _ex:
-            _macro = {k: _ex.submit(_qdl, v).result(timeout=12)
-                      for k, v in _MSYMS.items()}
+        # ── Override visible form fields with user's values ───────────────────
+        FORM_FIELDS = ["RSI","MA50","MA200","MA_Cross","Volatility",
+                       "MACD","MACD_Signal","MACD_Hist","BB_Width",
+                       "Volume_Log","Volume_Spike","ATR"]
+        for field in FORM_FIELDS:
+            if field in body and body[field] is not None:
+                try:
+                    feats[field] = float(body[field])
+                except (ValueError, TypeError):
+                    pass
 
-        def _lr(s, p=1):
-            if s is None or len(s) < p+1: return 0.0
-            v = s.pct_change(p).iloc[-1]
-            return float(v) if not np.isnan(v) else 0.0
-
-        def _lv(s, default=0.0):
-            if s is None or s.empty: return default
-            v = s.iloc[-1]; return float(v) if not np.isnan(v) else default
-
+    except Exception as exc:
+        # If download fails, fall back to form values + macro defaults
+        print(f"⚠  Manual predict live-feature fallback: {exc}")
+        feats = {k: v for k, v in body.items() if k != "ticker"}
         _now = pd.Timestamp.now()
-        _sc  = feats.get("Sector", 7)
-        _sp5r = _lr(_macro.get("sp500"))
-        _nifr = _lr(_macro.get("nifty"))
-        _usd  = _lr(_macro.get("usdinr"))
-        _crd  = _lr(_macro.get("crude"))
-        _copr = _lr(_macro.get("copper"))
-        _shan = _lr(_macro.get("shanghai"))
-        _nsdq = _lr(_macro.get("nasdaq"))
-
-        _us10y_s = _macro.get("us10y")
-        _us10y_chg = float(_us10y_s.diff().iloc[-1])             if _us10y_s is not None and len(_us10y_s) > 1 else 0.0
-
-        _vixin = _macro.get("vix_in")
-        _vix_roc = float(_vixin.pct_change(5).iloc[-1])             if _vixin is not None and len(_vixin) > 5 else 0.0
-
-        # Phase 1 — momentum (no historical data for manual, use neutral)
-        feats.setdefault("Return_1d",     0.0)
-        feats.setdefault("Return_5d_lag", 0.0)
-        feats.setdefault("Return_20d",    0.0)
-        feats.setdefault("Beta_60d",      1.0)   # market-neutral default
-        feats.setdefault("Rel_Strength",  0.0)
-
-        # Phase 4 — derive from MA values user entered
-        _ma50 = feats.get("MA50", 0) or 0
-        _ma20 = _ma50 * 0.99   # approximate
-        _price = _ma50 * 1.01
-        _bb_w  = feats.get("BB_Width", 0.05) or 0.05
-        feats.setdefault("Dist_MA20",   (_price - _ma20) / (_ma20 + 1e-9) if _ma20 else 0.0)
-        feats.setdefault("Dist_MA50",   (_price - _ma50) / (_ma50 + 1e-9) if _ma50 else 0.0)
-        feats.setdefault("MA20_Slope",  0.0)
-        feats.setdefault("MA50_Slope",  0.0)
-        feats.setdefault("BB_Position", 0.5)
-
-        # Phase 5B — live macro
-        feats.setdefault("USDINR_Return",   _usd)
-        feats.setdefault("USDINR_20d_Mom",  _lr(_macro.get("usdinr"), 20))
-        feats.setdefault("Crude_Return",    _crd)
-        feats.setdefault("Crude_20d_Mom",   _lr(_macro.get("crude"), 20))
-        feats.setdefault("Month_Sin",       float(np.sin(2*np.pi*_now.month/12)))
-        feats.setdefault("Month_Cos",       float(np.cos(2*np.pi*_now.month/12)))
-        feats.setdefault("Is_Budget_Month", int(_now.month == 2))
-        feats.setdefault("Is_Monsoon",      int(_now.month in [6,7,8,9]))
-
-        # Phase 6 — global macro (live)
-        feats.setdefault("SP500_Return",    _sp5r)
-        feats.setdefault("SP500_5d",        _lr(_macro.get("sp500"), 5))
-        feats.setdefault("VIX_US_Level",    _lv(_macro.get("vix_us"), 20.0) / 100)
-        feats.setdefault("VIX_IN_ROC5",     _vix_roc)
-        feats.setdefault("VIX_IN_Pct",      0.5)
-        feats.setdefault("US10Y_Level",     _lv(_us10y_s, 4.0) / 100)
-        feats.setdefault("US10Y_Chg",       _us10y_chg)
-        feats.setdefault("FII_Proxy",       _nifr - _sp5r)
-        feats.setdefault("Copper_Return",   _copr)
-        feats.setdefault("Shanghai_Return", _shan)
-
-        # Phase 6 — sector-conditional (live)
-        feats.setdefault("NASDAQ_IT",       _nsdq * int(_sc == 2))
-        feats.setdefault("USD_Export",      _usd  * int(_sc in [2, 7]))
-        feats.setdefault("Crude_Sector",    _crd  * int(_sc == 4))
-        feats.setdefault("Copper_Sector",   _copr * int(_sc == 8))
-        feats.setdefault("Shanghai_Sector", _shan * int(_sc in [6, 8]))
-        feats.setdefault("Yield_Banking",   _us10y_chg * int(_sc in [0, 1]))
-        feats.setdefault("Monsoon_FMCG",    feats.get("Is_Monsoon", 0) * int(_sc == 5))
-
-      except Exception as _me:
-        print(f"⚠  Macro fetch for manual predict failed: {_me}")
-        # Fallback: fill everything with neutral defaults so model still runs
-        _now = pd.Timestamp.now()
-        for _k, _v in {
-            "Return_1d":0.0, "Return_5d_lag":0.0, "Return_20d":0.0,
-            "Beta_60d":1.0, "Rel_Strength":0.0,
-            "Dist_MA20":0.0, "Dist_MA50":0.0, "MA20_Slope":0.0,
-            "MA50_Slope":0.0, "BB_Position":0.5,
-            "USDINR_Return":0.0, "USDINR_20d_Mom":0.0,
-            "Crude_Return":0.0, "Crude_20d_Mom":0.0,
-            "Month_Sin":float(np.sin(2*np.pi*_now.month/12)),
-            "Month_Cos":float(np.cos(2*np.pi*_now.month/12)),
-            "Is_Budget_Month":int(_now.month==2), "Is_Monsoon":int(_now.month in [6,7,8,9]),
-            "SP500_Return":0.0, "SP500_5d":0.0, "VIX_US_Level":0.20,
-            "VIX_IN_ROC5":0.0, "VIX_IN_Pct":0.5,
-            "US10Y_Level":0.04, "US10Y_Chg":0.0, "FII_Proxy":0.0,
-            "Copper_Return":0.0, "Shanghai_Return":0.0,
-            "NASDAQ_IT":0.0, "USD_Export":0.0, "Crude_Sector":0.0,
-            "Copper_Sector":0.0, "Shanghai_Sector":0.0,
-            "Yield_Banking":0.0, "Monsoon_FMCG":0.0,
-        }.items():
-            feats.setdefault(_k, _v)
+        feats.setdefault("Market_Return",   0.0)
+        feats.setdefault("Market_Regime",   1)
+        feats.setdefault("Earnings_Season", int(_now.month in [1,2,4,5,7,8,10,11]))
+        feats.setdefault("High52W_Pct",     0.95)
+        feats.setdefault("Low52W_Pct",      1.05)
+        feats.setdefault("Ticker",          0)
+        feats.setdefault("Sector",          7)
+        for k in ["Return_1d","Return_5d_lag","Return_20d","Beta_60d",
+                  "Rel_Strength","Dist_MA20","Dist_MA50","MA20_Slope",
+                  "MA50_Slope","BB_Position","RSI_lag1","RSI_lag3",
+                  "MACD_Hist_lag1","Return_lag2","Vol_Spike_lag1",
+                  "Max_Pain_Dist","EPS_Surprise","Promoter_Change",
+                  "Sector_Momentum","Sector_Rel_Perf"]:
+            feats.setdefault(k, 0.0)
 
     try:
         result = _run_predict(ticker, feats)
-        return result
+        return _json_safe(result)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
-
-
-# ── Trading Horizon Recommendation ──────────────────────────────────────────────
-def _compute_trading_horizon(feats: dict, mtf_result: dict,
-                              fun_result: dict, vix_result: dict) -> dict:
-    """
-    Determines which trading horizons this stock is currently suited for,
-    based on technical features, timeframe alignment, fundamentals and VIX.
-
-    IMPORTANT: The model is trained on daily data. Intraday is flagged but
-    marked as 'low confidence' since tick-level data was not used in training.
-    """
-    rsi        = feats.get("RSI", 50)
-    vol_spike  = feats.get("Volume_Spike", 1.0)
-    atr        = feats.get("ATR", 0)
-    macd_hist  = feats.get("MACD_Hist", 0)
-    ma_cross   = feats.get("MA_Cross", 0)
-    bb_width   = feats.get("BB_Width", 0.05)
-    hi52w      = feats.get("High52W_Pct", 0.95)
-    regime     = feats.get("Market_Regime", 1)
-    earn_szn   = feats.get("Earnings_Season", 0)
-
-    daily_trend  = mtf_result.get("daily",   "UNKNOWN")
-    weekly_trend = mtf_result.get("weekly",  "UNKNOWN")
-    monthly_trend= mtf_result.get("monthly", "UNKNOWN")
-    mom_1m       = mtf_result.get("mom_1m",  0)
-    mom_3m       = mtf_result.get("mom_3m",  0)
-
-    fund_score   = fun_result.get("score",  0.5)
-    vix          = vix_result.get("vix",    18)
-    vix_regime   = vix_result.get("regime", "NORMAL")
-
-    horizons = []
-
-    # ── Intraday ──────────────────────────────────────────────────────────────
-    # High ATR + volume spike = intraday volatility present
-    # BUT: model is daily — always low confidence for intraday
-    intraday_signals = []
-    if vol_spike > 2.0:  intraday_signals.append(f"Volume spike {vol_spike:.1f}x")
-    if rsi < 32:         intraday_signals.append(f"RSI oversold ({rsi:.0f})")
-    if rsi > 68:         intraday_signals.append(f"RSI overbought ({rsi:.0f})")
-    if bb_width > 0.12:  intraday_signals.append("Wide Bollinger bands")
-    if vix > 22:         intraday_signals.append(f"Elevated VIX ({vix:.1f})")
-
-    horizons.append({
-        "horizon":     "Intraday",
-        "icon":        "⚡",
-        "suitable":    len(intraday_signals) >= 2,
-        "confidence":  "Low",
-        "reasons":     intraday_signals[:2] if intraday_signals else ["Low intraday volatility indicators"],
-        "disclaimer":  "Model trained on daily data — intraday precision limited",
-        "color":       "warn",
-    })
-
-    # ── Short-term: 3–5 days ──────────────────────────────────────────────────
-    short_score = 0
-    short_reasons = []
-    if macd_hist > 0:
-        short_score += 2; short_reasons.append("MACD histogram positive")
-    if "UP" in daily_trend:
-        short_score += 2; short_reasons.append(f"Daily trend: {daily_trend}")
-    if vol_spike > 1.3:
-        short_score += 1; short_reasons.append(f"Above-avg volume ({vol_spike:.1f}x)")
-    if 40 < rsi < 65:
-        short_score += 1; short_reasons.append(f"RSI in momentum zone ({rsi:.0f})")
-    if earn_szn:
-        short_score += 1; short_reasons.append("Earnings season — catalyst potential")
-
-    horizons.append({
-        "horizon":     "Short-term",
-        "icon":        "📈",
-        "period":      "3–5 days",
-        "suitable":    short_score >= 4,
-        "confidence":  "High" if short_score >= 5 else "Medium" if short_score >= 3 else "Low",
-        "reasons":     short_reasons[:3],
-        "color":       "accent",
-    })
-
-    # ── Swing: 1–3 weeks ─────────────────────────────────────────────────────
-    swing_score = 0
-    swing_reasons = []
-    if "UP" in weekly_trend:
-        swing_score += 3; swing_reasons.append(f"Weekly trend: {weekly_trend}")
-    if ma_cross > 0:
-        swing_score += 2; swing_reasons.append("MA50 above MA200 (golden cross zone)")
-    if mom_3m > 5:
-        swing_score += 1; swing_reasons.append(f"3M momentum +{mom_3m:.1f}%")
-    if hi52w < 0.90:
-        swing_score += 1; swing_reasons.append("Below 52W high — room to run")
-    if vix_regime in ("NORMAL", "LOW_VOLATILITY"):
-        swing_score += 1; swing_reasons.append("Calm market regime")
-
-    horizons.append({
-        "horizon":     "Swing",
-        "icon":        "🔄",
-        "period":      "1–3 weeks",
-        "suitable":    swing_score >= 4,
-        "confidence":  "High" if swing_score >= 6 else "Medium" if swing_score >= 3 else "Low",
-        "reasons":     swing_reasons[:3],
-        "color":       "buy" if swing_score >= 4 else "dim",
-    })
-
-    # ── Long-term: months+ ───────────────────────────────────────────────────
-    long_score = 0
-    long_reasons = []
-    if "UP" in monthly_trend:
-        long_score += 3; long_reasons.append(f"Monthly trend: {monthly_trend}")
-    if regime == 1:
-        long_score += 2; long_reasons.append("Bull market regime (Nifty above 200MA)")
-    if fund_score > 0.60:
-        long_score += 2; long_reasons.append(f"Strong fundamentals (score {fund_score:.2f})")
-    if ma_cross > 0 and mom_3m > 0:
-        long_score += 1; long_reasons.append("Positive trend + momentum")
-    if vix_regime == "LOW_VOLATILITY":
-        long_score += 1; long_reasons.append("Low volatility — stable environment")
-
-    horizons.append({
-        "horizon":     "Long-term",
-        "icon":        "🏦",
-        "period":      "Months+",
-        "suitable":    long_score >= 4,
-        "confidence":  "High" if long_score >= 7 else "Medium" if long_score >= 4 else "Low",
-        "reasons":     long_reasons[:3],
-        "color":       "buy" if long_score >= 4 else "dim",
-    })
-
-    # ── Best recommendation ───────────────────────────────────────────────────
-    suitable = [h for h in horizons if h["suitable"]]
-    best     = max(horizons, key=lambda h: (h["suitable"], h.get("confidence","Low") == "High"))
-
-    return {
-        "horizons":    horizons,
-        "recommended": [h["horizon"] for h in suitable],
-        "primary":     best["horizon"] if suitable else "Short-term",
-        "summary":     f"Best suited for {', '.join(h['horizon'] for h in suitable)}" if suitable
-                       else "Mixed signals — no strong horizon bias currently",
-    }
-
-@app.get("/live")
-def predict_live(ticker: str):
-    # ── Step 1: Fetch stock data ONCE — shared across all engines ─────────────
-    df = yf.download(ticker, period="14mo", interval="1d",
-                     auto_adjust=True, progress=False)
-    if df is None or df.empty or len(df) < 60:
-        raise HTTPException(status_code=404, detail=f"No data found for '{ticker}'.")
-
-    # ── Step 2: Compute technical features ───────────────────────────────────
-    try:
-        feats = _live_features(ticker, df=df)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-
-    # ── Step 3: XGBoost prediction ────────────────────────────────────────────
-    try:
-        ml_result = _run_predict(ticker, feats)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
-
-    # ── Step 4: Run all parallel engines concurrently ─────────────────────────
-    from engines import mean_reversion, multi_timeframe, sentiment
-    from engines import volatility_regime, fundamental_rank, fusion
-    from engines import hmm_regime, sector_correlation, leader_lagger
-    from engines import nse_data, sector_rotation, eps_data
-
-    def _safe(fn, *args, **kwargs):
-        try:    return fn(*args, **kwargs)
-        except Exception as e:
-            name = getattr(fn, "__module__", "unknown").split(".")[-1]
-            print(f"⚠  Engine {name} failed: {e}")
-            return {"engine": name, "signal": "NEUTRAL", "score": 0.5,
-                    "detail": str(e)}
-
-    with ThreadPoolExecutor(max_workers=8) as ex:
-        fut_mr   = ex.submit(_safe, mean_reversion.run, ticker, df)
-        fut_mtf  = ex.submit(_safe, multi_timeframe.run, ticker, df)
-        fut_sen  = ex.submit(_safe, sentiment.run, ticker)
-        fut_vix  = ex.submit(_safe, volatility_regime.run)
-        fut_fun  = ex.submit(_safe, fundamental_rank.run, ticker,
-                             SECTOR_MAP, SECTOR_BENCHMARKS)
-        fut_hmm  = ex.submit(_safe, hmm_regime.run, df, ticker)
-        fut_sec  = ex.submit(_safe, sector_correlation.run, ticker,
-                             df, SECTOR_MAP)
-        fut_ll   = ex.submit(_safe, leader_lagger.run, ticker)
-        fut_nse  = ex.submit(_safe, nse_data.fetch_all)
-        fut_secr = ex.submit(_safe, sector_rotation.run, ticker, SECTOR_MAP.get(ticker, 7))
-        fut_eps  = ex.submit(_safe, eps_data.fetch_eps_data, ticker)
-
-        mr_res   = fut_mr.result(timeout=25)
-        mtf_res  = fut_mtf.result(timeout=25)
-        sen_res  = fut_sen.result(timeout=25)
-        vix_res  = fut_vix.result(timeout=25)
-        fun_res  = fut_fun.result(timeout=25)
-        try:
-            hmm_res  = fut_hmm.result(timeout=45)
-        except Exception:
-            hmm_res  = {"engine":"hmm_regime","signal":"NEUTRAL","score":0.5,
-                        "regime":"UNKNOWN","detail":"HMM timeout — using neutral"}
-        sec_res  = fut_sec.result(timeout=20)
-        ll_res   = fut_ll.result(timeout=20)
-        nse_res  = fut_nse.result(timeout=20)
-        secr_res = fut_secr.result(timeout=20)
-        eps_res  = fut_eps.result(timeout=20)
-
-    # Attach engine name for fusion
-    xgb_for_fusion = {
-        "engine": "xgboost",
-        "signal": ml_result["signal"],
-        "score":  ml_result["probability"] / 100,
-        "detail": f"XGBoost prob {ml_result['probability']}%",
-    }
-    # Tag sector_correlation engine name
-    sec_res["engine"]   = "sector_corr"
-    ll_res["engine"]    = "leader_lagger"
-    secr_res["engine"]  = "sector_rotation"
-    eps_for_fusion = {
-        "engine": "eps_fundamental",
-        "signal": eps_res.get("signal","NEUTRAL"),
-        "score":  {"BUY":0.68,"SELL":0.32,"NEUTRAL":0.50}.get(eps_res.get("signal","NEUTRAL"),0.50),
-        "detail": eps_res.get("detail",""),
-    }
-
-    # ── Step 5: Fuse all signals ──────────────────────────────────────────────
-    vix_multiplier  = vix_res.get("confidence_multiplier", 1.0)
-    current_regime  = hmm_res.get("regime", "UNKNOWN")
-    consensus = fusion.fuse(
-        [xgb_for_fusion, mr_res, mtf_res, sen_res, fun_res,
-         sec_res, ll_res, secr_res, eps_for_fusion],
-        vix_multiplier    = vix_multiplier,
-        hmm_regime_result = hmm_res,
-        current_regime    = current_regime,
-    )
-    consensus["vix_engine"] = vix_res
-    consensus["hmm_regime"] = hmm_res
-
-    # ── Step 5c: Inject live NSE + EPS + Sector data into feats ────────────
-    try:
-        pcr_data  = nse_res.get("pcr", {})
-        fii_data  = nse_res.get("fii_dii", {})
-        brd_data  = nse_res.get("breadth", {})
-        mp_data   = nse_res.get("max_pain", {})
-
-        pcr_val  = float(pcr_data.get("pcr", 1.0))
-        pcr_sig  = float(np.clip((pcr_val - 1.0) / 0.25, -2, 2))
-
-        feats["PCR"]           = pcr_val
-        feats["PCR_Signal"]    = pcr_sig
-        feats["FII_Net_Norm"]  = float(fii_data.get("fii_normalised", 0.0))
-        feats["DII_Net_Norm"]  = float(fii_data.get("dii_normalised", 0.0))
-        feats["Breadth_Pct"]   = float(brd_data.get("breadth_pct", 50.0))
-        feats["AdvDec_Ratio"]  = float(brd_data.get("adv_pct", 50.0))
-        feats["Max_Pain_Dist"] = float(mp_data.get("distance_pct", 0.0))
-
-        # Phase 9: EPS + Promoter
-        feats["EPS_Surprise"]    = float(eps_res.get("eps_surprise", 0.0))
-        feats["Promoter_Change"] = float(eps_res.get("promoter_chg", 0.0))
-
-        # Phase 9: Sector rotation
-        feats["Sector_Momentum"]  = float(secr_res.get("sector_rank", 0.5))
-        feats["Sector_Rel_Perf"]  = float(secr_res.get("sector_rel_perf", 0.0))
-
-    except Exception as _ne:
-        print(f"⚠  Feature injection failed: {_ne}")
-
-    # ── Step 5b: Record signals for performance tracking ──────────────────────
-    try:
-        from engines.performance_tracker import record_signals
-        record_signals(
-            ticker          = ticker,
-            engine_results  = [xgb_for_fusion, mr_res, mtf_res,
-                                sen_res, fun_res, sec_res, ll_res],
-            regime          = current_regime,
-            price           = feats.get("_last_price", 0),
-        )
-    except Exception as _pe:
-        print(f"⚠  Performance tracking failed: {_pe}")
-
-    # ── Step 6: Register stock + auto-retrain if new ──────────────────────────
-    is_new = _register_stock(ticker)
-    if is_new:
-        _schedule_auto_retrain()
-
-    # ── Step 7: SHAP explanation ──────────────────────────────────────────────
-    shap_result = []
-    try:
-        from ml.explain import explain_prediction
-        model_used, feat_list, _ = _get_model_for_ticker(ticker)
-        clean_feats = {k: v for k, v in feats.items() if not k.startswith("_")}
-        shap_result = explain_prediction(clean_feats, model_used, feat_list)
-    except Exception as exc:
-        print(f"⚠  SHAP failed: {exc}")
-
-    # ── Step 8: Trading Horizon ──────────────────────────────────────────────
-    try:
-        horizon = _compute_trading_horizon(feats, mtf_res, fun_res, vix_res)
-    except Exception as exc:
-        print(f"⚠  Horizon failed: {exc}")
-        horizon = {"horizons": [], "recommended": [], "primary": "Short-term",
-                   "summary": "Could not compute"}
-
-    # ── Step 9: Trade levels (entry, stop, targets) ─────────────────────────
-    try:
-        trade_levels = _compute_trade_levels(
-            feats, consensus, ml_result.get("signal","NEUTRAL"), horizon
-        )
-    except Exception as exc:
-        print(f"⚠  Trade levels failed: {exc}")
-        trade_levels = None
-
-    # ── Step 10: Fundamentals (re-use yf.info already fetched in fundamental engine) ─
-    fundamentals = None
-    try:
-        fundamentals = _compute_fundamentals(ticker, feats)
-    except Exception as exc:
-        print(f"⚠  Fundamentals failed: {exc}")
-
-    # ── Build response ────────────────────────────────────────────────────────
-    return _json_safe({
-        # ML signal (from XGBoost alone)
-        **ml_result,
-        # Fusion signal (all engines combined) — this is the primary signal
-        "consensus":      consensus,
-        # Data
-        "features":       {k: v for k, v in feats.items() if not k.startswith("_")},
-        "last_price":     feats["_last_price"],
-        "as_of":          feats["_as_of"],
-        # Individual engine results (for display)
-        "engines": {
-            "mean_reversion":    mr_res,
-            "multi_timeframe":   mtf_res,
-            "sentiment":         sen_res,
-            "volatility_regime": vix_res,
-            "fundamental_rank":  fun_res,
-            "hmm_regime":        hmm_res,
-            "sector_corr":       sec_res,
-            "leader_lagger":     ll_res,
-            "sector_rotation":   secr_res,
-            "eps_fundamental":   eps_for_fusion,
-        },
-        "nse_data": nse_res,
-        # Extras
-        "shap":           shap_result,
-        "trade_levels":   trade_levels,
-        "fundamentals":   fundamentals,
-        "horizon":        horizon,
-        "new_stock":      is_new,
-        "learning":       is_new or _learning,
-        "total_stocks":   len(_load_known_stocks()),
-    })
-
-
-
-
-
 
 
 @app.get("/status")
