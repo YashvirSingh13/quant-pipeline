@@ -502,13 +502,14 @@ select,input,button { font-family:var(--mono);font-size:20px;outline:none; }
 .consensus-conf-fill.neutral{background:linear-gradient(90deg,rgba(255,204,0,.4),var(--warn))}
 .consensus-conf-val { font-family:var(--display);font-size:18px;font-weight:700;min-width:44px;text-align:right;color:var(--text); }
 .engine-rows { padding:10px 0; }
-.engine-row { display:flex;align-items:flex-start;gap:10px;padding:12px 20px;transition:background .12s; }
+.engine-row { display:flex;align-items:flex-start;gap:8px;padding:10px 20px;
+             transition:background .12s;border-bottom:1px solid rgba(0,200,255,.05); }
 .engine-row:hover { background:rgba(0,200,255,.03); }
 .engine-dot { width:8px;height:8px;border-radius:50%;flex-shrink:0; }
 .engine-dot.buy{background:var(--buy);box-shadow:0 0 6px var(--buy)}
 .engine-dot.sell{background:var(--sell);box-shadow:0 0 6px var(--sell)}
 .engine-dot.neutral{background:var(--warn);box-shadow:0 0 4px var(--warn)}
-.engine-name { font-family:var(--display);font-size:15px;font-weight:600;letter-spacing:1px;color:var(--text);width:150px;flex-shrink:0; }
+.engine-name { font-family:var(--display);font-size:12px;font-weight:600;letter-spacing:0.5px;color:var(--text);width:140px;flex-shrink:0;line-height:1.4; }
 .engine-sig-badge { font-family:var(--display);font-size:14px;font-weight:700;letter-spacing:1px;width:70px;flex-shrink:0; }
 .engine-sig-badge.buy{color:var(--buy)} .engine-sig-badge.sell{color:var(--sell)} .engine-sig-badge.neutral{color:var(--warn)}
 .engine-bar-track { flex:1;height:4px;background:rgba(255,255,255,.06);border-radius:99px;overflow:hidden; }
@@ -1575,12 +1576,22 @@ async function runBacktest(){
   document.getElementById("btn-bt").disabled=true;
   try{
     const r=await fetch(`${API}/backtest?ticker=${encodeURIComponent(_btTicker)}&period=${_btPeriod}`);
+    if(!r.ok){
+      let errMsg="Backtest failed";
+      try{ const e=await r.json(); errMsg=e.detail||errMsg; }catch(_){}
+      toast(errMsg,"error");
+      document.getElementById("bt-placeholder").style.display="block";
+      document.getElementById("bt-placeholder").textContent="⚠ "+errMsg;
+      return;
+    }
     const d=await r.json();
-    if(!r.ok){toast(d.detail||"Backtest failed","error");return;}
     renderBacktest(d);
   }catch(e){
-    const msg = e.message&&(e.message.includes("pattern")||e.message.includes("JSON")||e.message.includes("Unexpected"))
-      ? "Server still starting up — wait 1–2 min then try backtest again"
+    // Only show "starting up" for network/parse errors before server is ready
+    const isStarting = !_lastLiveFeats && (
+      e.message.includes("pattern")||e.message.includes("JSON")||e.message.includes("Unexpected"));
+    const msg = isStarting
+      ? "Server still starting up — run a Live fetch first, then retry backtest"
       : "Backtest error: "+e.message;
     toast(msg,"error");
     document.getElementById("bt-placeholder").style.display="block";
