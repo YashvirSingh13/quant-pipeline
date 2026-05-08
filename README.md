@@ -86,6 +86,7 @@ Open it on your iPad.
 > **Free tier note:** Render free services spin down after 15 min of inactivity.
 > The first request after a sleep takes ~30–60 sec to wake up.
 > Railway's free tier does not spin down.
+> 
 
 ---
 
