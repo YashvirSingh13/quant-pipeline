@@ -42,6 +42,30 @@ def _earnings_mask(index):
     return (((m==4)&(d>=15))|(m==5)|((m==7)&(d>=15))|(m==8)|
             ((m==10)&(d>=15))|(m==11)|((m==1)&(d>=15))|(m==2)).astype(int)
 
+
+def _json_safe(obj):
+    """Recursively convert numpy/pandas types to native Python for JSON serialisation."""
+    import numpy as np
+    import pandas as pd
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(i) for i in obj]
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.floating,)):
+        return float(obj)
+    if isinstance(obj, (np.bool_,)):
+        return bool(obj)
+    if isinstance(obj, (np.ndarray,)):
+        return obj.tolist()
+    if isinstance(obj, (pd.Timestamp,)):
+        return str(obj.date())
+    if isinstance(obj, float) and (obj != obj):  # NaN
+        return None
+    return obj
+
+
 def _safe_ret(s, idx, p=1):
     """Return a Series of pct_change(p) for s aligned to idx, zeros if unavailable."""
     if s is None or (hasattr(s,'empty') and s.empty):
@@ -532,7 +556,7 @@ def run_backtest(ticker, model, label_encoder, metadata, sector_map, period="3y"
     dd_curve  = [round(float(d),2) for d in drawdown]
     roll_s_out= [round(float(v),2) for v in roll_sharpe_90]
 
-    return {
+    return _json_safe({
         "metrics": {
             "total_return":     round(total_ret,2),
             "cagr":             round(cagr,2),
@@ -566,4 +590,4 @@ def run_backtest(ticker, model, label_encoder, metadata, sector_map, period="3y"
         "period":  period,
         "ticker":  ticker,
         "transaction_cost_pct": TRANSACTION_COST*100,
-    }
+    })
