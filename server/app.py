@@ -1375,14 +1375,14 @@ def predict_live(ticker: str):
 
 @app.get("/status")
 def server_status():
-    """Real-time server state for the notification system."""
+    g = globals()
     return {
-        "ready":       _model_ready,
-        "learning":    _learning,
-        "retraining":  _retraining,
-        "n_stocks":    len(_load_known_stocks()),
-        "model_type":  "per-stock" if _stock_models else "global",
-        "trained_at":  _metadata.get("trained_at","—") if _metadata else "—",
+        "ready":      g.get("_global_model") is not None,
+        "learning":   bool(g.get("_learning", False)),
+        "retraining": bool(g.get("_retraining", False)),
+        "n_stocks":   len(_load_known_stocks()),
+        "model_type": "per-stock" if g.get("_stock_models") else "global",
+        "trained_at": (g.get("_metadata") or {}).get("trained_at", "unknown"),
     }
 
 
