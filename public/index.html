@@ -660,7 +660,7 @@ select,input,button { font-family:var(--mono);font-size:20px;outline:none; }
   <div class="header-right">
     <div id="learning-badge"><div class="badge-dot"></div><span id="learning-badge-text">LEARNING…</span></div>
     <div id="stocks-pill" onclick="showStocksInfo()">◈ <span id="stocks-count">—</span> STOCKS</div>
-    <div id="pred-pill" onclick="loadPredictions()" style="font-family:var(--display);font-size:15px;font-weight:600;letter-spacing:1.5px;color:var(--accent);border:1px solid var(--border-hi);padding:5px 12px;border-radius:99px;cursor:pointer;transition:all .15s" onmouseover="this.style.background='rgba(0,200,255,.08)'" onmouseout="this.style.background=''"">◈ PRED LOG</div>
+    <button id="pred-pill" onclick="loadPredictions()" style="font-family:var(--display);font-size:15px;font-weight:600;letter-spacing:1.5px;color:var(--accent);background:transparent;border:1px solid var(--border-hi);padding:5px 12px;border-radius:99px;cursor:pointer;transition:all .15s">◈ PRED LOG</button>
     <div id="live-clock">--:--:--</div>
     <button class="btn-pdf" onclick="exportPDF()" id="btn-export-pdf">⬇ Export PDF</button>
     <div class="header-meta">
@@ -1703,16 +1703,25 @@ startStatusPolling();
 
 // ── Prediction History ────────────────────────────────────────────────────────
 async function loadPredictions() {
-  document.getElementById("pred-panel").style.display = "block";
+  const panel = document.getElementById("pred-panel");
+  panel.style.display = "block";
+  // Scroll to panel smoothly
+  setTimeout(() => panel.scrollIntoView({behavior:"smooth", block:"start"}), 50);
+
   document.getElementById("pred-tbody").innerHTML =
     '<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:16px"><span class="spin"></span> Loading…</td></tr>';
 
   try {
     const r = await fetch(`${API}/predictions?limit=200`);
+    if (!r.ok) { toast("Could not load predictions — run some Live fetches first","warn"); return; }
     const d = await r.json();
-    if (!r.ok) { toast("Could not load predictions","error"); return; }
     renderPredictions(d);
-  } catch(e) { toast("Error loading predictions: "+e.message,"error"); }
+  } catch(e) {
+    const msg = e.message&&(e.message.includes("pattern")||e.message.includes("JSON"))
+      ? "Server still starting up — try again in 1–2 min"
+      : "Error loading predictions: "+e.message;
+    toast(msg,"error");
+  }
 }
 
 function renderPredictions(d) {
