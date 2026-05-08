@@ -763,6 +763,14 @@ def _live_features(ticker: str, df=None) -> dict:
         "Shanghai_Return": float(shanghai_close.reindex(close.index).ffill().pct_change().iloc[-1])
                            if len(shanghai_close) > 1 else 0.0,
 
+        # Phase 7: NSE official data (live values from NSE APIs)
+        # PCR from option chain — will be filled after NSE fetch below
+        "PCR":          1.0,        # placeholder — updated below
+        "PCR_Signal":   0.0,
+        "FII_Net_Norm": 0.0,
+        "DII_Net_Norm": 0.0,
+        "Breadth_Pct":  50.0,
+        "AdvDec_Ratio": 50.0,
         # Phase 6: Sector-conditional
         "NASDAQ_IT":       float(nasdaq_close.reindex(close.index).ffill().pct_change().iloc[-1]
                                   if len(nasdaq_close) > 1 else 0.0) * int(sector_code == 2),
@@ -1147,6 +1155,7 @@ def predict_live(ticker: str):
     from engines import mean_reversion, multi_timeframe, sentiment
     from engines import volatility_regime, fundamental_rank, fusion
     from engines import hmm_regime, sector_correlation, leader_lagger
+    from engines import nse_data
 
     def _safe(fn, *args, **kwargs):
         try:    return fn(*args, **kwargs)
@@ -1167,6 +1176,7 @@ def predict_live(ticker: str):
         fut_sec  = ex.submit(_safe, sector_correlation.run, ticker,
                              df, SECTOR_MAP)
         fut_ll   = ex.submit(_safe, leader_lagger.run, ticker)
+        fut_nse  = ex.submit(_safe, nse_data.fetch_all)
 
         mr_res   = fut_mr.result(timeout=15)
         mtf_res  = fut_mtf.result(timeout=15)
@@ -1176,6 +1186,7 @@ def predict_live(ticker: str):
         hmm_res  = fut_hmm.result(timeout=20)
         sec_res  = fut_sec.result(timeout=20)
         ll_res   = fut_ll.result(timeout=20)
+        nse_res  = fut_nse.result(timeout=20)
 
     # Attach engine name for fusion
     xgb_for_fusion = {
@@ -1199,6 +1210,25 @@ def predict_live(ticker: str):
     )
     consensus["vix_engine"] = vix_res
     consensus["hmm_regime"] = hmm_res
+
+    # ── Step 5c: Inject live NSE data into feats ───────────────────────────
+    try:
+        pcr_data    = nse_res.get("pcr", {})
+        fii_data    = nse_res.get("fii_dii", {})
+        brd_data    = nse_res.get("breadth", {})
+
+        pcr_val  = float(pcr_data.get("pcr", 1.0))
+        # PCR z-score vs recent (use cache history if available)
+        pcr_sig  = float(np.clip((pcr_val - 1.0) / 0.25, -2, 2))  # normalised signal
+
+        feats["PCR"]          = pcr_val
+        feats["PCR_Signal"]   = pcr_sig
+        feats["FII_Net_Norm"] = float(fii_data.get("fii_normalised", 0.0))
+        feats["DII_Net_Norm"] = float(fii_data.get("dii_normalised", 0.0))
+        feats["Breadth_Pct"]  = float(brd_data.get("breadth_pct", 50.0))
+        feats["AdvDec_Ratio"] = float(brd_data.get("adv_pct", 50.0))
+    except Exception as _ne:
+        print(f"⚠  NSE feature injection failed: {_ne}")
 
     # ── Step 5b: Record signals for performance tracking ──────────────────────
     try:
@@ -1273,6 +1303,7 @@ def predict_live(ticker: str):
             "sector_corr":       sec_res,
             "leader_lagger":     ll_res,
         },
+        "nse_data": nse_res,
         # Extras
         "shap":           shap_result,
         "trade_levels":   trade_levels,
@@ -1283,6 +1314,44 @@ def predict_live(ticker: str):
         "total_stocks":   len(_load_known_stocks()),
     }
 
+
+
+@app.get("/status")
+def server_status():
+    """Real-time server state for the notification system."""
+    return {
+        "ready":       _model_ready,
+        "learning":    _learning,
+        "retraining":  _retraining,
+        "n_stocks":    len(_load_known_stocks()),
+        "model_type":  "per-stock" if _stock_models else "global",
+        "trained_at":  _metadata.get("trained_at","—") if _metadata else "—",
+    }
+
+
+@app.get("/predictions")
+def prediction_history(limit: int = 100):
+    """Return recent prediction history with outcomes for the prediction log panel."""
+    try:
+        from engines.performance_tracker import _load
+        data     = _load()
+        signals  = data.get("signals", [])
+        # Return most recent first
+        recent   = list(reversed(signals[-limit:]))
+        # Summarise for UI
+        total    = len(signals)
+        resolved = [s for s in signals if s.get("outcome") in ("CORRECT","WRONG")]
+        correct  = sum(1 for s in resolved if s["outcome"]=="CORRECT")
+        accuracy = round(correct/len(resolved)*100,1) if resolved else None
+        return {
+            "predictions":  recent,
+            "total":        total,
+            "resolved":     len(resolved),
+            "correct":      correct,
+            "accuracy":     accuracy,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 @app.get("/performance")
 def engine_performance():
