@@ -91,6 +91,85 @@
   /* ── Momentum features row in feature table ── */
   .feat-table .momentum-row td { color:var(--accent); }
 
+
+  /* ── Notification strip ── */
+  .notif-strip {
+    display:none; align-items:center; gap:8px;
+    padding:6px 14px; margin-bottom:0;
+    border-bottom:1px solid var(--border);
+    font-family:var(--display); font-size:9px; letter-spacing:1.2px;
+    animation:notif-slide .3s ease-out;
+  }
+  @keyframes notif-slide{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+  .notif-strip.show { display:flex; }
+  .notif-strip.info    { background:rgba(0,200,255,.07); color:var(--accent); border-color:var(--border-hi); }
+  .notif-strip.warn    { background:rgba(255,204,0,.07); color:var(--warn);   border-color:rgba(255,204,0,.3); }
+  .notif-strip.success { background:rgba(0,255,170,.07); color:var(--buy);    border-color:rgba(0,255,170,.3); }
+  .notif-strip.error   { background:rgba(255,45,85,.07); color:var(--sell);   border-color:rgba(255,45,85,.3); }
+  .notif-dot  { width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0;animation:pulse-dot 2s infinite; }
+  .notif-msg  { flex:1; }
+  .notif-close{ cursor:pointer;opacity:.6;font-size:11px;padding:0 2px; }
+  .notif-close:hover{opacity:1}
+
+  /* ── Prediction History Panel ── */
+  .pred-summary { display:flex;gap:10px;padding:12px 20px;border-bottom:1px solid var(--border);flex-wrap:wrap; }
+  .pred-stat    { text-align:center; }
+  .pred-stat .ps-val { font-family:var(--display);font-size:20px;font-weight:700;color:var(--accent); }
+  .pred-stat .ps-lbl { font-family:var(--display);font-size:8px;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim);margin-top:2px; }
+
+  .pred-table   { width:100%;border-collapse:collapse;font-size:11px; }
+  .pred-table th{ text-align:left;padding:7px 14px;font-family:var(--display);font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface); }
+  .pred-table td{ padding:7px 14px;border-bottom:1px solid rgba(0,200,255,.04);color:var(--dim); }
+  .pred-table tr:hover td{background:rgba(0,200,255,.03)}
+  .pred-table tr:last-child td{border-bottom:none}
+  .pred-signal  { font-family:var(--display);font-size:8px;font-weight:700;letter-spacing:1px;padding:2px 7px;border-radius:2px; }
+  .pred-signal.BUY    { background:rgba(0,255,170,.1);color:var(--buy); }
+  .pred-signal.SELL   { background:rgba(255,45,85,.1);color:var(--sell); }
+  .pred-signal.NEUTRAL{ background:rgba(255,204,0,.1);color:var(--warn); }
+  .pred-outcome { font-family:var(--display);font-size:8px;font-weight:700;letter-spacing:1px;padding:2px 7px;border-radius:2px; }
+  .pred-outcome.CORRECT{ background:rgba(0,255,170,.1);color:var(--buy); }
+  .pred-outcome.WRONG  { background:rgba(255,45,85,.1);color:var(--sell); }
+  .pred-outcome.pending{ color:var(--dim);font-style:italic; }
+  .pred-scroll  { max-height:320px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent; }
+
+  /* ── Enhanced backtest extra metrics ── */
+  .bt-extra { display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:0 20px 14px; }
+  @media(max-width:700px){.bt-extra{grid-template-columns:repeat(2,1fr)}}
+  .bt-section-label { font-family:var(--display);font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);padding:8px 20px 4px;border-top:1px solid var(--border); }
+  .mc-row { display:flex;gap:8px;padding:0 20px 12px;flex-wrap:wrap; }
+  .mc-item { flex:1;min-width:100px;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:4px;padding:8px 12px;text-align:center; }
+  .mc-item .mc-val { font-family:var(--display);font-size:14px;font-weight:700; }
+  .mc-item .mc-lbl { font-family:var(--display);font-size:8px;letter-spacing:1px;color:var(--dim);margin-top:2px; }
+  .stress-row { display:flex;gap:8px;padding:0 20px 12px;flex-wrap:wrap; }
+  .stress-item { flex:1;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:4px;padding:8px 12px;text-align:center; }
+  .stress-item .sv { font-family:var(--display);font-size:13px;font-weight:700; }
+  .stress-item .sl { font-family:var(--display);font-size:8px;color:var(--dim);margin-top:2px; }
+  .wf-row { display:flex;gap:8px;padding:0 20px 12px;flex-wrap:wrap; }
+  .wf-item { flex:1;background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:4px;padding:8px 12px; }
+  .wf-item .wv { font-family:var(--display);font-size:14px;font-weight:700; }
+  .wf-item .wl { font-family:var(--display);font-size:8px;color:var(--dim);margin-top:2px; }
+  .regime-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:0 20px 12px; }
+  .regime-cell { background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:4px;padding:10px 12px; }
+  .regime-cell .rc-name { font-family:var(--display);font-size:9px;font-weight:600;letter-spacing:1px;color:var(--text);margin-bottom:6px; }
+  .regime-cell .rc-stat { display:flex;justify-content:space-between;font-size:10px;color:var(--dim);margin-top:3px; }
+  .regime-cell .rc-stat span:last-child { font-family:var(--mono);color:var(--accent); }
+
+
+  /* ── NSE Live Data panel ── */
+  .nse-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:14px 20px; }
+  @media(max-width:600px){.nse-grid{grid-template-columns:repeat(2,1fr)}}
+  .nse-card { background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:5px;padding:11px 14px;position:relative;overflow:hidden; }
+  .nse-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,var(--accent),transparent);opacity:.3}
+  .nse-card .nc-label{font-family:var(--display);font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim);margin-bottom:5px;}
+  .nse-card .nc-val  {font-family:var(--display);font-size:18px;font-weight:700;color:var(--text);}
+  .nse-card .nc-sub  {font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:3px;}
+  .nse-card .nc-sig  {font-family:var(--display);font-size:8px;font-weight:700;letter-spacing:1px;padding:2px 7px;border-radius:2px;margin-top:6px;display:inline-block;}
+  .nc-sig.BUY    {background:rgba(0,255,170,.1);color:var(--buy)}
+  .nc-sig.SELL   {background:rgba(255,45,85,.1);color:var(--sell)}
+  .nc-sig.NEUTRAL{background:rgba(255,204,0,.1);color:var(--warn)}
+  .nse-breadth-bar{height:5px;background:rgba(255,255,255,.07);border-radius:99px;overflow:hidden;margin-top:6px;}
+  .nse-breadth-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--sell),var(--warn),var(--buy));}
+
 </style>
 <title>QuantPipeline</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -581,6 +660,7 @@ select,input,button { font-family:var(--mono);font-size:15px;outline:none; }
   <div class="header-right">
     <div id="learning-badge"><div class="badge-dot"></div><span id="learning-badge-text">LEARNING…</span></div>
     <div id="stocks-pill" onclick="showStocksInfo()">◈ <span id="stocks-count">—</span> STOCKS</div>
+    <div id="pred-pill" onclick="loadPredictions()" style="font-family:var(--display);font-size:10px;font-weight:600;letter-spacing:1.5px;color:var(--accent);border:1px solid var(--border-hi);padding:5px 12px;border-radius:99px;cursor:pointer;transition:all .15s" onmouseover="this.style.background='rgba(0,200,255,.08)'" onmouseout="this.style.background=''"">◈ PRED LOG</div>
     <div id="live-clock">--:--:--</div>
     <button class="btn-pdf" onclick="exportPDF()" id="btn-export-pdf">⬇ Export PDF</button>
     <div class="header-meta">
@@ -596,6 +676,12 @@ select,input,button { font-family:var(--mono);font-size:15px;outline:none; }
   <!-- 1. Signal Input -->
   <div class="panel" id="input-panel">
     <div class="panel-header">◈ Signal Input</div>
+    <!-- Notification strip -->
+    <div class="notif-strip" id="notif-strip">
+      <div class="notif-dot"></div>
+      <div class="notif-msg" id="notif-msg"></div>
+      <div class="notif-close" onclick="dismissNotif()">✕</div>
+    </div>
     <div class="panel-body">
       <div class="input-top">
         <div class="ticker-input-wrap" id="ticker-wrap">
@@ -727,6 +813,14 @@ select,input,button { font-family:var(--mono);font-size:15px;outline:none; }
     </div>
   </div>
 
+  <!-- 4b. NSE Live Data -->
+  <div class="panel" id="nse-panel" style="display:none">
+    <div class="panel-header">◈ NSE Live Data
+      <span style="margin-left:auto;font-size:10px;color:var(--dim)">Option chain · FII/DII · Market breadth</span>
+    </div>
+    <div class="nse-grid" id="nse-grid"></div>
+  </div>
+
   <!-- 5. SHAP Explanation -->
   <div class="panel" id="shap-panel" style="display:none">
     <div class="panel-header">◈ Signal Explanation <span style="margin-left:auto;font-size:10px;color:var(--dim)">Why did the model decide this?</span></div>
@@ -760,6 +854,24 @@ select,input,button { font-family:var(--mono);font-size:15px;outline:none; }
     </div>
   </div>
 
+  <!-- 7b. Prediction History -->
+  <div class="panel" id="pred-panel" style="display:none">
+    <div class="panel-header">◈ Prediction Log
+      <span style="margin-left:auto;font-size:10px;color:var(--dim)" id="pred-accuracy-label"></span>
+      <button class="btn btn-secondary" onclick="loadPredictions()" style="font-size:9px;padding:4px 10px;margin-left:8px">↻ Refresh</button>
+    </div>
+    <div class="pred-summary" id="pred-summary"></div>
+    <div class="pred-scroll">
+      <table class="pred-table">
+        <thead><tr>
+          <th>Date / Time</th><th>Ticker</th><th>Engine</th>
+          <th>Signal</th><th>Score</th><th>Regime</th><th>Outcome</th>
+        </tr></thead>
+        <tbody id="pred-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- 8. Model Info -->
   <div class="panel" id="meta-panel" style="display:none">
     <div class="panel-header">◈ Model Info</div>
@@ -789,6 +901,8 @@ select,input,button { font-family:var(--mono);font-size:15px;outline:none; }
       <div class="bt-metrics" id="bt-metrics"></div>
       <div class="bt-chart-wrap"><canvas id="bt-chart"></canvas></div>
       <div class="bt-summary" id="bt-summary"></div>
+      <!-- Extra metrics -->
+      <div id="bt-extra-wrap"></div>
       <div class="bt-trades">
         <div class="bt-trades-label">Recent Trades</div>
         <div id="bt-trade-list"></div>
@@ -827,7 +941,10 @@ const FEAT_LABELS = {
   NASDAQ_IT:"NASDAQ × IT Signal", USD_Export:"USD × Export Sector",
   Crude_Sector:"Crude × Energy Signal", Copper_Sector:"Copper × Metals Signal",
   Shanghai_Sector:"Shanghai × Metals/Infra", Yield_Banking:"Yield × Banking Signal",
-  Monsoon_FMCG:"Monsoon × FMCG Signal"
+  Monsoon_FMCG:"Monsoon × FMCG Signal",
+  PCR:"Put/Call Ratio (NSE)", PCR_Signal:"PCR Z-Score Signal",
+  FII_Net_Norm:"FII Net Flow (Normalised)", DII_Net_Norm:"DII Net Flow (Normalised)",
+  Breadth_Pct:"Market Breadth (% Above 50MA)", AdvDec_Ratio:"Advance/Decline %"
 };
 const ENGINE_LABELS = {
   xgboost:"XGBoost ML", multi_timeframe:"Multi-Timeframe",
@@ -887,7 +1004,7 @@ function clearFields(){
 }
 function clearAll(){ _lastLiveFeats = null;
   clearFields(); hideResult();
-  ["feat-panel","fund-panel","shap-panel","consensus-panel","horizon-panel","bt-panel","trade-card","consensus-macro-row"].forEach(id=>{
+  ["feat-panel","fund-panel","shap-panel","consensus-panel","horizon-panel","bt-panel","trade-card","consensus-macro-row","nse-panel"].forEach(id=>{
     document.getElementById(id).style.display="none";
   });
   document.getElementById("feat-panel").style.display="none";
@@ -1271,6 +1388,7 @@ async function fetchLive(){
     // Store full 54-feature set so manual predict can use them as base
     if(d.features) _lastLiveFeats = Object.assign({}, d.features,
       {_ticker: ticker, Ticker: d.features.Ticker||0, Sector: d.features.Sector||7});
+    if(d.nse_data) renderNseData(d.nse_data);
     if(d.consensus) renderConsensus(d.consensus,d.engines);
     // Macro context row
     if(d.features){
@@ -1476,6 +1594,237 @@ async function exportPDF(){
     btn.textContent="⬇ Export PDF"; btn.disabled=false;
   }
 }
+
+
+
+// ── NSE Live Data ─────────────────────────────────────────────────────────────
+function renderNseData(nseData) {
+  if (!nseData) return;
+  const panel = document.getElementById("nse-panel");
+  const grid  = document.getElementById("nse-grid");
+  panel.style.display = "block";
+
+  const pcr = nseData.pcr || {};
+  const fii = nseData.fii_dii || {};
+  const brd = nseData.breadth || {};
+
+  const pcrVal  = pcr.pcr   != null ? pcr.pcr.toFixed(2)  : "—";
+  const fiiNet  = fii.fii_net != null ? `₹${fii.fii_net > 0 ? "+" : ""}${fii.fii_net.toFixed(0)} Cr` : "—";
+  const diiNet  = fii.dii_net != null ? `₹${fii.dii_net > 0 ? "+" : ""}${fii.dii_net.toFixed(0)} Cr` : "—";
+  const brdPct  = brd.breadth_pct != null ? brd.breadth_pct + "%" : "—";
+  const advPct  = brd.adv_pct != null ? brd.adv_pct + "%" : "—";
+  const atmIV   = pcr.atm_iv  != null ? pcr.atm_iv.toFixed(1) + "%" : "—";
+  const spot    = pcr.nifty_spot ? `Spot: ₹${pcr.nifty_spot.toLocaleString("en-IN")}` : "";
+
+  const pcrColor = pcr.pcr > 1.2 ? "var(--sell)" : pcr.pcr < 0.8 ? "var(--buy)" : "var(--warn)";
+  const fiiColor = fii.fii_net > 500 ? "var(--buy)" : fii.fii_net < -500 ? "var(--sell)" : "var(--warn)";
+  const diiColor = fii.dii_net > 500 ? "var(--buy)" : fii.dii_net < -500 ? "var(--sell)" : "var(--warn)";
+  const brdColor = brd.breadth_pct > 60 ? "var(--buy)" : brd.breadth_pct < 40 ? "var(--sell)" : "var(--warn)";
+
+  grid.innerHTML = `
+    <div class="nse-card">
+      <div class="nc-label">Put/Call Ratio</div>
+      <div class="nc-val" style="color:${pcrColor}">${pcrVal}</div>
+      <div class="nc-sub">${spot}</div>
+      <div class="nc-sub">ATM IV: ${atmIV}</div>
+      <span class="nc-sig ${pcr.signal||'NEUTRAL'}">${pcr.signal||'—'}</span>
+    </div>
+    <div class="nse-card">
+      <div class="nc-label">FII Net</div>
+      <div class="nc-val" style="color:${fiiColor}">${fiiNet}</div>
+      <div class="nc-sub">DII: <span style="color:${diiColor}">${diiNet}</span></div>
+      <div class="nc-sub">${fii.date || "Today"}</div>
+      <span class="nc-sig ${fii.signal||'NEUTRAL'}">${fii.signal||'—'}</span>
+    </div>
+    <div class="nse-card">
+      <div class="nc-label">Market Breadth</div>
+      <div class="nc-val" style="color:${brdColor}">${brdPct}</div>
+      <div class="nc-sub">Above 50MA · Adv: ${advPct}</div>
+      <div class="nse-breadth-bar">
+        <div class="nse-breadth-fill" style="width:${brd.breadth_pct||50}%"></div>
+      </div>
+      <span class="nc-sig ${brd.signal||'NEUTRAL'}">${brd.signal||'—'}</span>
+    </div>
+  `;
+}
+
+// ── Notification System ───────────────────────────────────────────────────────
+let _statusPollTimer = null;
+let _lastStatus = {};
+
+function showNotif(msg, type="info") {
+  const strip = document.getElementById("notif-strip");
+  const msgEl = document.getElementById("notif-msg");
+  strip.className = `notif-strip show ${type}`;
+  msgEl.textContent = msg;
+}
+function dismissNotif() {
+  document.getElementById("notif-strip").className = "notif-strip";
+}
+
+async function pollStatus() {
+  try {
+    const r = await fetch(`${API}/status`);
+    if (!r.ok) return;
+    const d = await r.json();
+
+    // Detect state changes
+    if (d.retraining && !_lastStatus.retraining)
+      showNotif("⟳ Retraining model — predictions continue on old model…", "warn");
+    else if (!d.retraining && _lastStatus.retraining)
+      showNotif(`✓ Retrain complete — model updated (${d.n_stocks} stocks)`, "success");
+    else if (d.learning && !_lastStatus.learning)
+      showNotif(`◈ New stock added — training registry expanded to ${d.n_stocks} stocks`, "info");
+    else if (!d.learning && _lastStatus.learning)
+      showNotif(`✓ Registry saved — ${d.n_stocks} stocks now tracked`, "success");
+    else if (!d.ready && !_lastStatus.hasOwnProperty("ready"))
+      showNotif("⏳ Model initialising — first-boot training in progress (~15 min)", "warn");
+    else if (d.ready && _lastStatus.ready === false)
+      showNotif("✓ Model ready — live predictions available", "success");
+
+    document.getElementById("stocks-count").textContent = d.n_stocks || "—";
+    _lastStatus = d;
+  } catch(_) {}
+}
+
+// Start status polling every 10 seconds
+function startStatusPolling() {
+  pollStatus();
+  _statusPollTimer = setInterval(pollStatus, 10000);
+}
+startStatusPolling();
+
+// ── Prediction History ────────────────────────────────────────────────────────
+async function loadPredictions() {
+  document.getElementById("pred-panel").style.display = "block";
+  document.getElementById("pred-tbody").innerHTML =
+    '<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:16px"><span class="spin"></span> Loading…</td></tr>';
+
+  try {
+    const r = await fetch(`${API}/predictions?limit=200`);
+    const d = await r.json();
+    if (!r.ok) { toast("Could not load predictions","error"); return; }
+    renderPredictions(d);
+  } catch(e) { toast("Error loading predictions: "+e.message,"error"); }
+}
+
+function renderPredictions(d) {
+  // Summary stats
+  const stats = [
+    {val: d.total,    lbl: "Total Logged"},
+    {val: d.resolved, lbl: "Resolved"},
+    {val: d.accuracy != null ? d.accuracy+"%" : "—", lbl: "Accuracy"},
+    {val: d.correct,  lbl: "Correct"},
+  ];
+  document.getElementById("pred-summary").innerHTML = stats.map(s =>
+    `<div class="pred-stat"><div class="ps-val">${s.val ?? "—"}</div><div class="ps-lbl">${s.lbl}</div></div>`
+  ).join("");
+
+  document.getElementById("pred-accuracy-label").textContent =
+    d.accuracy != null ? `Rolling accuracy: ${d.accuracy}%` : "";
+
+  // Table rows
+  const rows = (d.predictions || []);
+  if (!rows.length) {
+    document.getElementById("pred-tbody").innerHTML =
+      '<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:16px">No predictions logged yet — run Live fetches to populate</td></tr>';
+    return;
+  }
+
+  document.getElementById("pred-tbody").innerHTML = rows.map(p => {
+    const dt   = new Date(p.ts);
+    const dtStr= dt.toLocaleDateString("en-IN")+" "+dt.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"});
+    const sig  = p.signal || "NEUTRAL";
+    const oc   = p.outcome;
+    const ocEl = oc === "CORRECT" ? `<span class="pred-outcome CORRECT">✓ CORRECT</span>`
+               : oc === "WRONG"   ? `<span class="pred-outcome WRONG">✗ WRONG</span>`
+               : `<span class="pred-outcome pending">Pending (${p.resolve_date})</span>`;
+    const eng  = p.engine || "—";
+    const sc   = p.score != null ? (p.score*100).toFixed(1)+"%" : "—";
+    const reg  = p.regime || "—";
+    const tick = (p.ticker || "—").replace(".NS","").replace(".BO","");
+    return `<tr>
+      <td style="white-space:nowrap;color:var(--dim)">${dtStr}</td>
+      <td style="font-family:var(--display);font-size:10px;font-weight:600;color:var(--accent)">${tick}</td>
+      <td style="font-size:10px;color:var(--dim)">${eng}</td>
+      <td><span class="pred-signal ${sig}">${sig}</span></td>
+      <td style="font-family:var(--mono)">${sc}</td>
+      <td><span class="vix-badge ${reg}" style="font-size:8px">${reg}</span></td>
+      <td>${ocEl}</td>
+    </tr>`;
+  }).join("");
+}
+
+// ── Enhanced Backtest rendering ───────────────────────────────────────────────
+function renderBtExtra(d) {
+  const wrap = document.getElementById("bt-extra-wrap");
+  if (!wrap) return;
+  let html = "";
+
+  // Extra metrics row
+  const m = d.metrics;
+  const extraMetrics = [
+    {lbl:"Sortino",   val: m.sortino_ratio, cls: m.sortino_ratio>=1?"pos":m.sortino_ratio<0?"neg":"neu"},
+    {lbl:"Calmar",    val: m.calmar_ratio,  cls: m.calmar_ratio>=1?"pos":m.calmar_ratio<0?"neg":"neu"},
+    {lbl:"Exposure",  val: (m.exposure_pct||0)+"%", cls:"neu"},
+    {lbl:"Recovery",  val: m.recovery_factor, cls: m.recovery_factor>=1?"pos":"neg"},
+  ];
+  html += `<div class="bt-extra">${extraMetrics.map(e =>
+    `<div class="bt-metric"><div class="bm-label">${e.lbl}</div><div class="bm-val ${e.cls}">${e.val}</div></div>`
+  ).join("")}</div>`;
+
+  // Monte Carlo
+  const mc = d.monte_carlo;
+  if (mc && mc.cagr_p50 !== undefined) {
+    html += `<div class="bt-section-label">Monte Carlo (500 simulations — bootstrapped trade outcomes)</div>
+    <div class="mc-row">
+      <div class="mc-item"><div class="mc-val" style="color:var(--sell)">${mc.cagr_p5}%</div><div class="mc-lbl">5th Percentile CAGR</div></div>
+      <div class="mc-item"><div class="mc-val" style="color:var(--warn)">${mc.cagr_p50}%</div><div class="mc-lbl">Median CAGR</div></div>
+      <div class="mc-item"><div class="mc-val" style="color:var(--buy)">${mc.cagr_p95}%</div><div class="mc-lbl">95th Percentile CAGR</div></div>
+      <div class="mc-item"><div class="mc-val" style="color:var(--accent)">${mc.prob_positive}%</div><div class="mc-lbl">Prob. Profitable</div></div>
+    </div>`;
+  }
+
+  // Slippage stress
+  const ss = d.slippage_stress;
+  if (ss) {
+    const posNeg = v => v > 0 ? "pos" : "neg";
+    html += `<div class="bt-section-label">Slippage Stress Test</div>
+    <div class="stress-row">
+      <div class="stress-item"><div class="sv" style="color:var(--${posNeg(ss['cost_0.10pct'])?'buy':'sell'})">${ss['cost_0.10pct']}%</div><div class="sl">0.1% per side</div></div>
+      <div class="stress-item"><div class="sv" style="color:var(--${posNeg(ss['cost_0.30pct'])?'buy':'sell'})">${ss['cost_0.30pct']}%</div><div class="sl">0.3% per side</div></div>
+      <div class="stress-item"><div class="sv" style="color:var(--${posNeg(ss['cost_0.50pct'])?'buy':'sell'})">${ss['cost_0.50pct']}%</div><div class="sl">0.5% per side</div></div>
+    </div>`;
+  }
+
+  // Walk-forward
+  const wf = d.walk_forward;
+  if (wf && wf.length) {
+    html += `<div class="bt-section-label">Walk-Forward Validation (3 equal windows)</div>
+    <div class="wf-row">${wf.map(w => {
+      const cls = w.return_pct > 0 ? "var(--buy)" : "var(--sell)";
+      return `<div class="wf-item"><div class="wv" style="color:${cls}">${w.return_pct > 0?"+":""}${w.return_pct}%</div><div class="wl">${w.period}: ${w.start} → ${w.end}</div></div>`;
+    }).join("")}</div>`;
+  }
+
+  // Regime stats
+  const rs = d.regime_stats;
+  if (rs && Object.keys(rs).length) {
+    html += `<div class="bt-section-label">Performance by VIX Regime</div>
+    <div class="regime-grid">
+      ${Object.entries(rs).map(([regime, stats]) => `
+      <div class="regime-cell">
+        <div class="rc-name">${regime.replace(/_/g," ").toUpperCase()}</div>
+        <div class="rc-stat"><span>Trades</span><span>${stats.count}</span></div>
+        <div class="rc-stat"><span>Win Rate</span><span>${stats.win_rate}%</span></div>
+        <div class="rc-stat"><span>Avg Return</span><span style="color:${stats.avg_ret>=0?"var(--buy)":"var(--sell)"}">${stats.avg_ret>=0?"+":""}${stats.avg_ret}%</span></div>
+      </div>`).join("")}
+    </div>`;
+  }
+
+  wrap.innerHTML = html;
+}
+
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 loadMeta();
