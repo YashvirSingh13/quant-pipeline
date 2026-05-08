@@ -20,13 +20,15 @@ ENGINE_NAME = "fusion"
 
 # ── Base weights (starting point before adjustments) ─────────────────────────
 BASE_WEIGHTS = {
-    "xgboost":          0.28,
-    "multi_timeframe":  0.20,
-    "mean_reversion":   0.12,
-    "sentiment":        0.14,
-    "fundamental_rank": 0.07,
-    "sector_corr":      0.11,
-    "leader_lagger":    0.08,
+    "xgboost":          0.25,
+    "multi_timeframe":  0.17,
+    "mean_reversion":   0.11,
+    "sentiment":        0.12,
+    "fundamental_rank": 0.06,
+    "sector_corr":      0.09,
+    "leader_lagger":    0.07,
+    "sector_rotation":  0.08,   # Phase 9
+    "eps_fundamental":  0.05,   # Phase 9
 }
 
 BUY_THRESH  = 0.62

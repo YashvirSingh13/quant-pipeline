@@ -290,14 +290,95 @@ def get_market_breadth(nifty50_tickers: list = None) -> dict:
         return fallback
 
 
+
+# ── Max Pain ───────────────────────────────────────────────────────────────────
+def get_max_pain(symbol: str = "NIFTY") -> dict:
+    """
+    Compute option Max Pain — the strike price where total option writers
+    (sellers) face minimum loss at expiry. Price gravitates toward this
+    level as expiry approaches (typically last 5-7 trading days).
+
+    Max Pain = strike where sum of all ITM options intrinsic value is minimised.
+
+    Returns: {max_pain, current_spot, distance_pct, signal, detail}
+    """
+    now = time.time()
+    cache_key = f"maxpain_{symbol}"
+    if cache_key in _cache and (now - _cache[cache_key]["ts"]) < PCR_TTL:
+        return _cache[cache_key]["data"]
+
+    try:
+        s = _nse_session()
+        url = f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol}"
+        r = s.get(url, timeout=10)
+        data = r.json()
+
+        records = data.get("records", {}).get("data", [])
+        spot    = float(data.get("records", {}).get("underlyingValue", 0))
+
+        if not records or not spot:
+            raise ValueError("No option chain data")
+
+        # Collect all strikes
+        strikes = sorted(set(rec["strikePrice"] for rec in records))
+
+        # For each strike, compute total pain if price expires there
+        pain = {}
+        for test_price in strikes:
+            total = 0.0
+            for rec in records:
+                k = rec["strikePrice"]
+                # Call writers lose if strike < test_price (call is ITM)
+                if "CE" in rec:
+                    oi = rec["CE"].get("openInterest", 0)
+                    total += max(0, test_price - k) * oi
+                # Put writers lose if strike > test_price (put is ITM)
+                if "PE" in rec:
+                    oi = rec["PE"].get("openInterest", 0)
+                    total += max(0, k - test_price) * oi
+            pain[test_price] = total
+
+        max_pain_strike = min(pain, key=pain.get)
+        distance_pct    = round((spot - max_pain_strike) / max_pain_strike * 100, 2)
+
+        # Signal: if spot is far from max pain, it tends to revert
+        if distance_pct > 3.0:
+            signal = "SELL"
+            detail = f"Spot ₹{spot:.0f} is {distance_pct}% above max pain ₹{max_pain_strike}"
+        elif distance_pct < -3.0:
+            signal = "BUY"
+            detail = f"Spot ₹{spot:.0f} is {abs(distance_pct)}% below max pain ₹{max_pain_strike}"
+        else:
+            signal = "NEUTRAL"
+            detail = f"Spot near max pain ₹{max_pain_strike} (diff {distance_pct}%)"
+
+        result = {
+            "max_pain":     max_pain_strike,
+            "spot":         spot,
+            "distance_pct": distance_pct,
+            "signal":       signal,
+            "detail":       detail,
+        }
+        _cache[cache_key] = {"ts": now, "data": result}
+        return result
+
+    except Exception as e:
+        fallback = {"max_pain": 0, "spot": 0, "distance_pct": 0,
+                    "signal": "NEUTRAL", "detail": f"Max pain unavailable: {e}"}
+        _cache[cache_key] = {"ts": now - PCR_TTL + 60, "data": fallback}
+        return fallback
+
+
 # ── Combined fetch ─────────────────────────────────────────────────────────────
 def fetch_all() -> dict:
     """Fetch all NSE data in one call. Returns combined dict."""
-    pcr     = get_pcr()
-    fii     = get_fii_dii()
-    breadth = get_market_breadth()
+    pcr      = get_pcr()
+    fii      = get_fii_dii()
+    breadth  = get_market_breadth()
+    max_pain = get_max_pain()
     return {
-        "pcr":     pcr,
-        "fii_dii": fii,
-        "breadth": breadth,
+        "pcr":      pcr,
+        "fii_dii":  fii,
+        "breadth":  breadth,
+        "max_pain": max_pain,
     }
