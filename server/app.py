@@ -20,7 +20,7 @@ import numpy as np
 import joblib
 import yfinance as yf
 import pandas as pd
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Body
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -935,17 +935,13 @@ def list_stocks():
             "per_stock_trained": per_stock_trained, "total": len(stocks)}
 
 @app.post("/predict")
-async def predict_manual(request: Request):
+def predict_manual(body: dict = Body(...)):
     """
-    Manual prediction. Downloads fresh stock data for the ticker,
-    computes all 69 features identically to the live endpoint,
-    then overrides the 12 visible form fields with the user's values.
-    This guarantees identical results to live when fields are unchanged.
+    Manual prediction. Uses sync def (not async) so _live_features()
+    runs in FastAPI's thread pool and never blocks the async event loop.
+    Body(...) receives raw JSON dict without Pydantic field stripping.
     """
-    try:
-        body = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
 
     ticker = body.get("ticker","") or "UNKNOWN"
     # Normalise ticker
