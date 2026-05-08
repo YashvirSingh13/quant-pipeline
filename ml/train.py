@@ -161,6 +161,13 @@ STOCK_FEATURES = [
     "Crude_Sector",    "Copper_Sector",
     "Shanghai_Sector", "Yield_Banking",
     "Monsoon_FMCG",
+    # Phase 7: NSE official data
+    "PCR",             # Nifty Put/Call Ratio
+    "PCR_Signal",      # PCR z-score vs 20-day mean (extreme = reversal signal)
+    "FII_Net_Norm",    # FII net normalised (-1 to +1)
+    "DII_Net_Norm",    # DII net normalised (-1 to +1)
+    "Breadth_Pct",     # % Nifty 50 stocks above 50MA
+    "AdvDec_Ratio",    # % stocks advancing today
 ]
 # Global fallback model adds stock-identity features
 GLOBAL_FEATURES = STOCK_FEATURES + ["Ticker", "Sector"]
@@ -417,6 +424,16 @@ def build_features(df: pd.DataFrame,
     df["Shanghai_Sector"] = df["Shanghai_Return"]   * int(is_metals or is_infra)
     df["Yield_Banking"]   = df["US10Y_Chg"]         * is_banking
     df["Monsoon_FMCG"]    = df["Is_Monsoon"]        * is_fmcg
+
+    # ── Phase 7: NSE official data features ──────────────────────────────────
+    # Training uses proxies since live NSE data unavailable for historical dates.
+    # Model learns weights from proxies; live prediction overrides with real values.
+    df["PCR"]          = 1.0                                   # neutral PCR
+    df["PCR_Signal"]   = 0.0                                   # z-score neutral
+    df["FII_Net_Norm"] = df["FII_Proxy"].clip(-1, 1)          # FII proxy
+    df["DII_Net_Norm"] = 0.0
+    df["Breadth_Pct"]  = (df["Market_Regime"] * 40 + 50).clip(10, 90) # regime proxy
+    df["AdvDec_Ratio"] = 50.0                                  # neutral
 
     # Stock identity (for global model)
     df["Ticker"] = ticker_code
