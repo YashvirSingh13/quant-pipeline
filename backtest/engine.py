@@ -325,7 +325,7 @@ def run_backtest(ticker, model, label_encoder, metadata, sector_map, period="3y"
                            "price":round(p,2),"return_pct":round(ret_pct,2)})
 
         pv = shares*p if in_pos else capital
-        equity.append({"date":str(date.date()),"value":round(pv,2)})
+        equity.append({"date":str(date.date()),"value":round(pv,2),"in_pos":in_pos})
 
     # Close open position at end
     if in_pos:
@@ -339,7 +339,7 @@ def run_backtest(ticker, model, label_encoder, metadata, sector_map, period="3y"
 
     final_val = equity[-1]["value"] if equity else INITIAL_CAPITAL
 
-    # ── Metrics ───────────────────────────────────────────────────────────────────
+    # ── Core Metrics ────────────────────────────────────────────────────────────
     vals   = pd.Series([e["value"] for e in equity])
     drets  = vals.pct_change().dropna()
     n      = len(vals)
@@ -353,6 +353,7 @@ def run_backtest(ticker, model, label_encoder, metadata, sector_map, period="3y"
     roll_max  = vals.cummax()
     drawdown  = (vals-roll_max)/roll_max*100
     max_dd    = float(drawdown.min())
+    max_dd_abs= float((roll_max-vals).max())
 
     sells     = [t for t in trades if "SELL" in t["type"] and "return_pct" in t]
     wins      = [t for t in sells if t["return_pct"]>0]
@@ -363,21 +364,131 @@ def run_backtest(ticker, model, label_encoder, metadata, sector_map, period="3y"
     pf        = gp/gl if gl>0 else (float("inf") if gp>0 else 0)
     avg_ret   = sum(t["return_pct"] for t in sells)/len(sells) if sells else 0
 
-    # Nifty benchmark
+    # ── Advanced Metrics ─────────────────────────────────────────────────────
+    # Sortino ratio (uses downside deviation only)
+    down_dev  = drets[drets<rf_d].std()*np.sqrt(252)
+    sortino   = float(exc.mean()*252/down_dev) if down_dev>0 else 0
+
+    # Calmar ratio (CAGR / |Max Drawdown|)
+    calmar    = float(cagr/abs(max_dd)) if max_dd!=0 else 0
+
+    # Recovery factor (net profit / max drawdown in ₹)
+    recovery  = float((final_val-INITIAL_CAPITAL)/max_dd_abs) if max_dd_abs>0 else 0
+
+    # Exposure % (time in market)
+    in_market = sum(1 for e in equity if e.get("in_pos", False))
+    exposure  = round(in_market/len(equity)*100, 1) if equity else 0
+
+    # Rolling Sharpe (90-day)
+    roll_sharpe_90 = (exc.rolling(90).mean()/exc.rolling(90).std()*np.sqrt(252)).fillna(0)
+    roll_sharpe_30 = (exc.rolling(30).mean()/exc.rolling(30).std()*np.sqrt(252)).fillna(0)
+
+    # ── Monte Carlo Simulation (500 runs, bootstrap resampling of trades) ─────
+    mc_result = {"cagr_p5": 0, "cagr_p50": cagr, "cagr_p95": 0, "prob_positive": 0}
+    trade_rets_arr = np.array([t["return_pct"]/100 for t in sells]) if len(sells) >= 5 else None
+    if trade_rets_arr is not None and len(trade_rets_arr) >= 5:
+        mc_cagrs = []
+        for _ in range(500):
+            sim = np.random.choice(trade_rets_arr, size=len(trade_rets_arr), replace=True)
+            final_sim = np.prod(1+sim)*100   # normalised to 100 base
+            trading_days = len(trade_rets_arr)*5   # ~5d avg hold
+            mc_cagr = (final_sim/100)**(252/max(trading_days,1))-1
+            mc_cagrs.append(mc_cagr*100)
+        mc_result = {
+            "cagr_p5":       round(float(np.percentile(mc_cagrs, 5)), 2),
+            "cagr_p50":      round(float(np.percentile(mc_cagrs, 50)), 2),
+            "cagr_p95":      round(float(np.percentile(mc_cagrs, 95)), 2),
+            "prob_positive": round(float(np.mean([c>0 for c in mc_cagrs])*100), 1),
+        }
+
+    # ── Slippage Stress Test ──────────────────────────────────────────────────
+    # Re-run P&L at 3 different cost levels to show sensitivity
+    def _stress_pnl(cost_pct):
+        c2, s2, ep2, in2 = INITIAL_CAPITAL, 0, 0, False
+        for i,(date,pr) in enumerate(prices.items()):
+            p2 = float(pr)
+            if np.isnan(p2): continue
+            sg = signals[i]
+            if sg=="BUY" and not in2:
+                s2 = (c2*(1-cost_pct))/p2; ep2=p2; in2=True; c2=0
+            elif sg=="SELL" and in2:
+                c2 = s2*p2*(1-cost_pct); in2=False; s2=0
+        if in2:
+            c2 = s2*float(prices.iloc[-1])*(1-cost_pct)
+        return round((c2/INITIAL_CAPITAL-1)*100, 2)
+
+    stress = {
+        "cost_0.10pct": _stress_pnl(0.001),
+        "cost_0.30pct": _stress_pnl(0.003),
+        "cost_0.50pct": _stress_pnl(0.005),
+    }
+
+    # ── Regime Filter Stats ───────────────────────────────────────────────────
+    # Stats on trades filtered by VIX level using macro data already downloaded
+    vix_in = macro.get("vix_in")
+    regime_stats = {}
+    if vix_in is not None and not vix_in.empty and sells:
+        vix_aligned = vix_in.reindex(prices.index).ffill().bfill()
+        trade_dates = {t["date"] for t in sells}
+        low_vix_trades  = [t for t in sells if vix_aligned.get(t["date"], 18) < 15]
+        high_vix_trades = [t for t in sells if vix_aligned.get(t["date"], 18) > 22]
+        mid_vix_trades  = [t for t in sells
+                           if 15 <= vix_aligned.get(t["date"], 18) <= 22]
+        def _regime_metrics(tlist):
+            if not tlist: return {"count":0,"win_rate":0,"avg_ret":0}
+            wr = sum(1 for t in tlist if t["return_pct"]>0)/len(tlist)*100
+            ar = sum(t["return_pct"] for t in tlist)/len(tlist)
+            return {"count":len(tlist),"win_rate":round(wr,1),"avg_ret":round(ar,2)}
+        regime_stats = {
+            "low_vix_lt15":   _regime_metrics(low_vix_trades),
+            "mid_vix_15_22":  _regime_metrics(mid_vix_trades),
+            "high_vix_gt22":  _regime_metrics(high_vix_trades),
+        }
+
+    # ── Walk-Forward Period Validation ────────────────────────────────────────
+    # Split into 3 equal windows, compute metrics per window
+    wf_results = []
+    if len(prices) >= 200:
+        chunk = len(prices)//3
+        for wi in range(3):
+            s_i = wi*chunk
+            e_i = (wi+1)*chunk if wi<2 else len(prices)
+            p_chunk = prices.iloc[s_i:e_i]
+            s_chunk = signals[s_i:e_i]
+            cap2, sh2, ep2, in2 = float(INITIAL_CAPITAL), 0.0, 0.0, False
+            for k,(dt,pr) in enumerate(p_chunk.items()):
+                p2 = float(pr)
+                if np.isnan(p2): continue
+                sg = s_chunk[k]
+                if sg=="BUY" and not in2:
+                    sh2=(cap2*(1-TRANSACTION_COST))/p2; ep2=p2; in2=True; cap2=0
+                elif sg=="SELL" and in2:
+                    cap2=sh2*p2*(1-TRANSACTION_COST); in2=False; sh2=0
+            if in2: cap2=sh2*float(p_chunk.iloc[-1])*(1-TRANSACTION_COST)
+            wf_ret = round((cap2/INITIAL_CAPITAL-1)*100, 2)
+            wf_results.append({
+                "period":f"Window {wi+1}",
+                "start": str(p_chunk.index[0].date()),
+                "end":   str(p_chunk.index[-1].date()),
+                "return_pct": wf_ret,
+            })
+
+    # ── Nifty benchmark ───────────────────────────────────────────────────────
     nifty_p   = nc.reindex(prices.index).dropna()
     bench_ret = float((nifty_p.iloc[-1]/nifty_p.iloc[0]-1)*100) if len(nifty_p)>1 else 0
     nifty_norm= [round(float(v)/float(nifty_p.iloc[0])*100,2) for v in nifty_p]
     port_norm = [round(e["value"]/INITIAL_CAPITAL*100,2) for e in equity]
     dates_out = [e["date"] for e in equity]
-
-    # Drawdown curve (for chart)
     dd_curve  = [round(float(d),2) for d in drawdown]
+    roll_s_out= [round(float(v),2) for v in roll_sharpe_90]
 
     return {
         "metrics": {
             "total_return":     round(total_ret,2),
             "cagr":             round(cagr,2),
             "sharpe_ratio":     round(sharpe,2),
+            "sortino_ratio":    round(sortino,2),
+            "calmar_ratio":     round(calmar,2),
             "max_drawdown":     round(max_dd,2),
             "win_rate":         round(win_rate,2),
             "total_trades":     len(sells),
@@ -385,14 +496,21 @@ def run_backtest(ticker, model, label_encoder, metadata, sector_map, period="3y"
             "avg_trade_return": round(avg_ret,2),
             "benchmark_return": round(bench_ret,2),
             "alpha":            round(total_ret-bench_ret,2),
+            "recovery_factor":  round(recovery,2),
+            "exposure_pct":     exposure,
             "initial_capital":  INITIAL_CAPITAL,
             "final_capital":    round(final_val,2),
         },
+        "monte_carlo":    mc_result,
+        "slippage_stress":stress,
+        "regime_stats":   regime_stats,
+        "walk_forward":   wf_results,
         "equity_curve": {
-            "dates":      dates_out,
-            "portfolio":  port_norm,
-            "benchmark":  nifty_norm[:len(port_norm)],
-            "drawdown":   dd_curve,
+            "dates":          dates_out,
+            "portfolio":      port_norm,
+            "benchmark":      nifty_norm[:len(port_norm)],
+            "drawdown":       dd_curve,
+            "rolling_sharpe": roll_s_out,
         },
         "trades":  trades[-30:],
         "period":  period,
