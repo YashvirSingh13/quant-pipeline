@@ -44,25 +44,29 @@ def _earnings_mask(index):
 
 
 def _json_safe(obj):
-    """Recursively convert numpy/pandas types to native Python for JSON serialisation."""
+    # Recursively sanitise for JSON — handles numpy types, NaN, inf, -inf
     import numpy as np
     import pandas as pd
+    import math
     if isinstance(obj, dict):
-        return {k: _json_safe(v) for k, v in obj.items()}
+        return {str(k): _json_safe(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
         return [_json_safe(i) for i in obj]
-    if isinstance(obj, (np.integer,)):
+    if isinstance(obj, np.integer):
         return int(obj)
-    if isinstance(obj, (np.floating,)):
-        return float(obj)
-    if isinstance(obj, (np.bool_,)):
+    if isinstance(obj, np.bool_):
         return bool(obj)
-    if isinstance(obj, (np.ndarray,)):
-        return obj.tolist()
-    if isinstance(obj, (pd.Timestamp,)):
+    if isinstance(obj, np.floating):
+        v = float(obj)
+        return None if (math.isnan(v) or math.isinf(v)) else v
+    if isinstance(obj, np.ndarray):
+        return [_json_safe(x) for x in obj.tolist()]
+    if isinstance(obj, pd.Timestamp):
         return str(obj.date())
-    if isinstance(obj, float) and (obj != obj):  # NaN
-        return None
+    if isinstance(obj, float):
+        return None if (math.isnan(obj) or math.isinf(obj)) else obj
+    if isinstance(obj, (pd.Series, pd.DataFrame)):
+        return None  # shouldn't appear but safety net
     return obj
 
 
