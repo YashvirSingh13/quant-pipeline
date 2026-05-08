@@ -314,22 +314,27 @@ def _compute_trade_levels(feats: dict, consensus: dict, ml_signal: str,
     if action_sig in ("BUY",):
         entry_low  = round(price * 0.997, 2)
         entry_high = round(price * 1.003, 2)
-        stop_loss  = round(price - risk, 2)
-        target1    = round(price + risk,     2)
+        stop_loss  = round(price - risk, 2)          # BELOW entry — only triggers if price FALLS
+        target1    = round(price + risk,     2)      # above entry — profit if price RISES
         target2    = round(price + risk * 2, 2)
-        stop_pct   = round((stop_loss - price) / price * 100, 2) if price else 0
+        stop_pct   = round(risk / price * 100, 2) if price else 0   # always positive %
+        stop_note  = f"triggers only if price falls to ₹{stop_loss:,.2f}"
         t1_pct     = round((target1   - price) / price * 100, 2) if price else 0
         t2_pct     = round((target2   - price) / price * 100, 2) if price else 0
 
     elif action_sig in ("SELL",):
-        entry_low  = round(price * 0.997, 2)
+        # ── Indian market: no overnight shorting allowed ──────────────────────
+        # SELL = "exit existing long position" or "do not enter"
+        # Show exit range only — no stop loss, no downward targets
+        entry_low  = round(price * 0.997, 2)   # suggested exit range
         entry_high = round(price * 1.003, 2)
-        stop_loss  = round(price + risk, 2)
-        target1    = round(price - risk,     2)
-        target2    = round(price - risk * 2, 2)
-        stop_pct   = round((stop_loss - price) / price * 100, 2) if price else 0
-        t1_pct     = round((target1   - price) / price * 100, 2) if price else 0
-        t2_pct     = round((target2   - price) / price * 100, 2) if price else 0
+        stop_loss  = None     # not applicable — you are exiting, not holding short
+        target1    = None     # not applicable
+        target2    = None
+        stop_pct   = None
+        stop_note  = "Exit your position or stay out — shorting not permitted in Indian equity cash market"
+        t1_pct     = None
+        t2_pct     = None
 
     else:
         # NEUTRAL / WATCH — show observation range, no directional targets
@@ -339,6 +344,7 @@ def _compute_trade_levels(feats: dict, consensus: dict, ml_signal: str,
         target1    = None
         target2    = None
         stop_pct   = None
+        stop_note  = "No stop — observe only"
         t1_pct     = None
         t2_pct     = None
 
