@@ -446,17 +446,12 @@ def build_features(df: pd.DataFrame,
     df["AdvDec_Ratio"] = 50.0                                  # neutral
 
     # ── Phase 8: Lag features ──────────────────────────────────────────────────
-    rsi_series     = _rsi(close)
-    macd_l, macd_s = _macd(close)
-    macd_h         = macd_l - macd_s
-    vol_spike_s    = vol / vol.rolling(20).mean()
-    daily_ret_s    = close.pct_change()
-
-    df["RSI_lag1"]       = rsi_series.shift(1)
-    df["RSI_lag3"]       = rsi_series.shift(3)
-    df["MACD_Hist_lag1"] = macd_h.shift(1)
-    df["Return_lag2"]    = daily_ret_s.shift(2)
-    df["Vol_Spike_lag1"] = vol_spike_s.shift(1)
+    # Use already-computed columns from Phase 0 — no need to recompute
+    df["RSI_lag1"]       = df["RSI"].shift(1)
+    df["RSI_lag3"]       = df["RSI"].shift(3)
+    df["MACD_Hist_lag1"] = df["MACD_Hist"].shift(1)
+    df["Return_lag2"]    = close.pct_change().shift(2)
+    df["Vol_Spike_lag1"] = df["Volume_Spike"].shift(1)
 
     # Phase 8: Max Pain distance — neutral 0 in training (no historical options data)
     df["Max_Pain_Dist"]  = 0.0
