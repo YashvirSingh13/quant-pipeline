@@ -1125,7 +1125,7 @@ function renderTradeCard(tl) {
        <div class="trade-cell-sub pos">${fmtPct(tl.target1_pct,true)} / ${fmtPct(tl.target2_pct,true)}</div>`
     : tl.signal === "SELL"
     ? `<div class="trade-cell-value" style="color:var(--sell);font-size:15px;font-weight:700">Do Not Enter</div>
-       <div class="trade-cell-sub">Exit near ₹ ${Number(tl.entry_mid||0).toLocaleString("en-IN")} if holding</div>`
+       <div class="trade-cell-sub">Exit near ₹ ${Number(tl.entry_low||tl.entry_high||0).toLocaleString("en-IN")} if holding</div>`
     : `<div class="trade-cell-value na">—</div>
        <div class="trade-cell-sub">No target set</div>`;
 
