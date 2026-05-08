@@ -449,17 +449,33 @@ DEBOUNCE_SECS   = 30
 
 # ── Helpers: stock registry ──────────────────────────────────────────────────────
 def _load_known_stocks() -> list:
+    # Load registry - NEVER shrinks, only grows
     if os.path.exists(STOCKS_FILE):
-        with open(STOCKS_FILE) as f:
-            existing = json.load(f)
-        # Merge any new SEED_STOCKS into existing registry automatically
+        try:
+            with open(STOCKS_FILE) as _f:
+                existing = json.load(_f)
+            if not isinstance(existing, list):
+                existing = []
+        except Exception:
+            existing = []
+
         new_seeds = [s for s in SEED_STOCKS if s not in existing]
         if new_seeds:
             merged = sorted(set(existing + new_seeds))
             _save_known_stocks(merged)
-            print(f"📋 Registry expanded {len(existing)}→{len(merged)} stocks")
+            print(f"📋 Registry expanded {len(existing)} to {len(merged)} stocks")
             return merged
+
+        if len(existing) < len(SEED_STOCKS):
+            merged = sorted(set(existing + SEED_STOCKS))
+            _save_known_stocks(merged)
+            print(f"📋 Registry restored to {len(merged)} stocks")
+            return merged
+
+        print(f"📋 Registry: {len(existing)} stocks")
         return existing
+
+    print(f"📋 First boot - initialising {len(SEED_STOCKS)} stocks")
     _save_known_stocks(SEED_STOCKS)
     return SEED_STOCKS.copy()
 
@@ -763,14 +779,31 @@ def _live_features(ticker: str, df=None) -> dict:
         "Shanghai_Return": float(shanghai_close.reindex(close.index).ffill().pct_change().iloc[-1])
                            if len(shanghai_close) > 1 else 0.0,
 
-        # Phase 7: NSE official data (live values from NSE APIs)
-        # PCR from option chain — will be filled after NSE fetch below
-        "PCR":          1.0,        # placeholder — updated below
+        # Phase 7: NSE official data (placeholders — updated below after NSE fetch)
+        "PCR":          1.0,
         "PCR_Signal":   0.0,
         "FII_Net_Norm": 0.0,
         "DII_Net_Norm": 0.0,
         "Breadth_Pct":  50.0,
         "AdvDec_Ratio": 50.0,
+        # Phase 8: Lag features
+        "RSI_lag1":      float(_rsi(close).shift(1).iloc[-1])
+                         if len(close) > 15 else 50.0,
+        "RSI_lag3":      float(_rsi(close).shift(3).iloc[-1])
+                         if len(close) > 17 else 50.0,
+        "MACD_Hist_lag1": float((_macd(close)[0] - _macd(close)[1]).shift(1).iloc[-1])
+                          if len(close) > 28 else 0.0,
+        "Return_lag2":   float(close.pct_change().shift(2).iloc[-1])
+                         if len(close) > 3 else 0.0,
+        "Vol_Spike_lag1":float((vol / vol.rolling(20).mean()).shift(1).iloc[-1])
+                         if len(close) > 21 else 1.0,
+        # Phase 8: Max Pain (placeholder — injected below)
+        "Max_Pain_Dist": 0.0,
+        # Phase 9: EPS + Promoter + Sector rotation (injected below)
+        "EPS_Surprise":    0.0,
+        "Promoter_Change": 0.0,
+        "Sector_Momentum": 0.5,
+        "Sector_Rel_Perf": 0.0,
         # Phase 6: Sector-conditional
         "NASDAQ_IT":       float(nasdaq_close.reindex(close.index).ffill().pct_change().iloc[-1]
                                   if len(nasdaq_close) > 1 else 0.0) * int(sector_code == 2),
@@ -1155,7 +1188,7 @@ def predict_live(ticker: str):
     from engines import mean_reversion, multi_timeframe, sentiment
     from engines import volatility_regime, fundamental_rank, fusion
     from engines import hmm_regime, sector_correlation, leader_lagger
-    from engines import nse_data
+    from engines import nse_data, sector_rotation, eps_data
 
     def _safe(fn, *args, **kwargs):
         try:    return fn(*args, **kwargs)
@@ -1177,6 +1210,8 @@ def predict_live(ticker: str):
                              df, SECTOR_MAP)
         fut_ll   = ex.submit(_safe, leader_lagger.run, ticker)
         fut_nse  = ex.submit(_safe, nse_data.fetch_all)
+        fut_secr = ex.submit(_safe, sector_rotation.run, ticker, SECTOR_MAP.get(ticker, 7))
+        fut_eps  = ex.submit(_safe, eps_data.fetch_eps_data, ticker)
 
         mr_res   = fut_mr.result(timeout=15)
         mtf_res  = fut_mtf.result(timeout=15)
@@ -1187,6 +1222,8 @@ def predict_live(ticker: str):
         sec_res  = fut_sec.result(timeout=20)
         ll_res   = fut_ll.result(timeout=20)
         nse_res  = fut_nse.result(timeout=20)
+        secr_res = fut_secr.result(timeout=20)
+        eps_res  = fut_eps.result(timeout=20)
 
     # Attach engine name for fusion
     xgb_for_fusion = {
@@ -1196,14 +1233,22 @@ def predict_live(ticker: str):
         "detail": f"XGBoost prob {ml_result['probability']}%",
     }
     # Tag sector_correlation engine name
-    sec_res["engine"] = "sector_corr"
-    ll_res["engine"]  = "leader_lagger"
+    sec_res["engine"]   = "sector_corr"
+    ll_res["engine"]    = "leader_lagger"
+    secr_res["engine"]  = "sector_rotation"
+    eps_for_fusion = {
+        "engine": "eps_fundamental",
+        "signal": eps_res.get("signal","NEUTRAL"),
+        "score":  {"BUY":0.68,"SELL":0.32,"NEUTRAL":0.50}.get(eps_res.get("signal","NEUTRAL"),0.50),
+        "detail": eps_res.get("detail",""),
+    }
 
     # ── Step 5: Fuse all signals ──────────────────────────────────────────────
     vix_multiplier  = vix_res.get("confidence_multiplier", 1.0)
     current_regime  = hmm_res.get("regime", "UNKNOWN")
     consensus = fusion.fuse(
-        [xgb_for_fusion, mr_res, mtf_res, sen_res, fun_res, sec_res, ll_res],
+        [xgb_for_fusion, mr_res, mtf_res, sen_res, fun_res,
+         sec_res, ll_res, secr_res, eps_for_fusion],
         vix_multiplier    = vix_multiplier,
         hmm_regime_result = hmm_res,
         current_regime    = current_regime,
@@ -1211,24 +1256,34 @@ def predict_live(ticker: str):
     consensus["vix_engine"] = vix_res
     consensus["hmm_regime"] = hmm_res
 
-    # ── Step 5c: Inject live NSE data into feats ───────────────────────────
+    # ── Step 5c: Inject live NSE + EPS + Sector data into feats ────────────
     try:
-        pcr_data    = nse_res.get("pcr", {})
-        fii_data    = nse_res.get("fii_dii", {})
-        brd_data    = nse_res.get("breadth", {})
+        pcr_data  = nse_res.get("pcr", {})
+        fii_data  = nse_res.get("fii_dii", {})
+        brd_data  = nse_res.get("breadth", {})
+        mp_data   = nse_res.get("max_pain", {})
 
         pcr_val  = float(pcr_data.get("pcr", 1.0))
-        # PCR z-score vs recent (use cache history if available)
-        pcr_sig  = float(np.clip((pcr_val - 1.0) / 0.25, -2, 2))  # normalised signal
+        pcr_sig  = float(np.clip((pcr_val - 1.0) / 0.25, -2, 2))
 
-        feats["PCR"]          = pcr_val
-        feats["PCR_Signal"]   = pcr_sig
-        feats["FII_Net_Norm"] = float(fii_data.get("fii_normalised", 0.0))
-        feats["DII_Net_Norm"] = float(fii_data.get("dii_normalised", 0.0))
-        feats["Breadth_Pct"]  = float(brd_data.get("breadth_pct", 50.0))
-        feats["AdvDec_Ratio"] = float(brd_data.get("adv_pct", 50.0))
+        feats["PCR"]           = pcr_val
+        feats["PCR_Signal"]    = pcr_sig
+        feats["FII_Net_Norm"]  = float(fii_data.get("fii_normalised", 0.0))
+        feats["DII_Net_Norm"]  = float(fii_data.get("dii_normalised", 0.0))
+        feats["Breadth_Pct"]   = float(brd_data.get("breadth_pct", 50.0))
+        feats["AdvDec_Ratio"]  = float(brd_data.get("adv_pct", 50.0))
+        feats["Max_Pain_Dist"] = float(mp_data.get("distance_pct", 0.0))
+
+        # Phase 9: EPS + Promoter
+        feats["EPS_Surprise"]    = float(eps_res.get("eps_surprise", 0.0))
+        feats["Promoter_Change"] = float(eps_res.get("promoter_chg", 0.0))
+
+        # Phase 9: Sector rotation
+        feats["Sector_Momentum"]  = float(secr_res.get("sector_rank", 0.5))
+        feats["Sector_Rel_Perf"]  = float(secr_res.get("sector_rel_perf", 0.0))
+
     except Exception as _ne:
-        print(f"⚠  NSE feature injection failed: {_ne}")
+        print(f"⚠  Feature injection failed: {_ne}")
 
     # ── Step 5b: Record signals for performance tracking ──────────────────────
     try:
@@ -1302,6 +1357,8 @@ def predict_live(ticker: str):
             "hmm_regime":        hmm_res,
             "sector_corr":       sec_res,
             "leader_lagger":     ll_res,
+            "sector_rotation":   secr_res,
+            "eps_fundamental":   eps_for_fusion,
         },
         "nse_data": nse_res,
         # Extras
