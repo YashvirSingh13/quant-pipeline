@@ -1102,21 +1102,26 @@ function renderTradeCard(tl) {
   const cls    = (tl.action_color || "dim");
   const tier   = tl.tier || "LOW";
   const votes  = tl.votes || {};
-  const hasLevels = tl.signal === "BUY" || tl.signal === "SELL";
+  const hasLevels = tl.signal === "BUY";   // SELL = exit only, no levels in Indian market
 
-  const const slDir = (d.signal==="SELL"||d.consensus?.signal==="SELL")
-    ? "exit if rises above" : "exit if falls below";
-  stopCell = hasLevels
+  const stopCell = tl.signal === "BUY"
     ? `<div class="trade-cell-value stop">${fmt(tl.stop_loss)}</div>
-       <div class="trade-cell-sub neg">${fmtPct(tl.stop_pct)} risk · ${slDir}</div>`
-    : `<div class="trade-cell-value na">Wait for signal</div>
+       <div class="trade-cell-sub neg">${fmtPct(tl.stop_pct)} max loss</div>
+       <div class="trade-cell-sub" style="color:var(--dim);font-size:11px">${tl.stop_note||""}</div>`
+    : tl.signal === "SELL"
+    ? `<div class="trade-cell-value" style="color:var(--sell);font-size:14px">Exit Position</div>
+       <div class="trade-cell-sub">No shorting in Indian equity cash market</div>`
+    : `<div class="trade-cell-value na">—</div>
        <div class="trade-cell-sub">Observe range only</div>`;
 
-  const targetCell = hasLevels
+  const targetCell = tl.signal === "BUY"
     ? `<div class="trade-cell-value target">${fmt(tl.target1)}, ${fmt(tl.target2)}</div>
        <div class="trade-cell-sub pos">${fmtPct(tl.target1_pct,true)} / ${fmtPct(tl.target2_pct,true)}</div>`
+    : tl.signal === "SELL"
+    ? `<div class="trade-cell-value" style="color:var(--sell);font-size:15px;font-weight:700">Do Not Enter</div>
+       <div class="trade-cell-sub">Exit near ₹ ${Number(tl.entry_mid||0).toLocaleString("en-IN")} if holding</div>`
     : `<div class="trade-cell-value na">—</div>
-       <div class="trade-cell-sub">No directional target</div>`;
+       <div class="trade-cell-sub">No target set</div>`;
 
   const engRows = (tl.engine_recs || []).map(e => {
     const ec = (e.signal||"NEUTRAL").toLowerCase();
@@ -1144,7 +1149,7 @@ function renderTradeCard(tl) {
       <div class="trade-action-text">${tl.action_text||""}</div>
     </div>
     <div class="trade-hero">
-      <div class="trade-signal-word">${tl.signal}</div>
+      <div class="trade-signal-word">${tl.signal === "SELL" ? "EXIT" : tl.signal}</div>
       <div>
         <div class="trade-guidance">${tl.guidance||""}</div>
         <div class="trade-votes" style="margin-top:10px">
@@ -1162,7 +1167,7 @@ function renderTradeCard(tl) {
         <div class="trade-cell-sub">Around ${fmt(tl.entry_mid)}</div>
       </div>
       <div class="trade-cell">
-        <div class="trade-cell-label">Stop Loss</div>
+        <div class="trade-cell-label">Stop Loss <span style="font-size:11px;color:var(--dim);font-weight:400">· only exits if trade goes against you</span></div>
         ${stopCell}
       </div>
       <div class="trade-cell">
