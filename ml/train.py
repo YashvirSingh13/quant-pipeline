@@ -162,12 +162,22 @@ STOCK_FEATURES = [
     "Shanghai_Sector", "Yield_Banking",
     "Monsoon_FMCG",
     # Phase 7: NSE official data
-    "PCR",             # Nifty Put/Call Ratio
-    "PCR_Signal",      # PCR z-score vs 20-day mean (extreme = reversal signal)
-    "FII_Net_Norm",    # FII net normalised (-1 to +1)
-    "DII_Net_Norm",    # DII net normalised (-1 to +1)
-    "Breadth_Pct",     # % Nifty 50 stocks above 50MA
-    "AdvDec_Ratio",    # % stocks advancing today
+    "PCR", "PCR_Signal", "FII_Net_Norm", "DII_Net_Norm",
+    "Breadth_Pct", "AdvDec_Ratio",
+    # Phase 8: Lag features (sequence awareness)
+    "RSI_lag1",          # RSI yesterday
+    "RSI_lag3",          # RSI 3 days ago
+    "MACD_Hist_lag1",    # MACD histogram yesterday (momentum change)
+    "Return_lag2",       # Price return 2 days ago
+    "Vol_Spike_lag1",    # Volume spike yesterday
+    # Phase 8: Max Pain distance
+    "Max_Pain_Dist",     # % distance from option max pain level
+    # Phase 9: Fundamental enrichment
+    "EPS_Surprise",      # Latest quarter EPS growth QoQ
+    "Promoter_Change",   # Promoter holding change QoQ (positive = buying)
+    # Phase 9: Sector rotation
+    "Sector_Momentum",   # Sector's 20d momentum rank vs all sectors (0-1)
+    "Sector_Rel_Perf",   # Sector return vs Nifty over 20 days
 ]
 # Global fallback model adds stock-identity features
 GLOBAL_FEATURES = STOCK_FEATURES + ["Ticker", "Sector"]
@@ -435,13 +445,46 @@ def build_features(df: pd.DataFrame,
     df["Breadth_Pct"]  = (df["Market_Regime"] * 40 + 50).clip(10, 90) # regime proxy
     df["AdvDec_Ratio"] = 50.0                                  # neutral
 
+    # ── Phase 8: Lag features ──────────────────────────────────────────────────
+    rsi_series     = _rsi(close)
+    macd_l, macd_s = _macd(close)
+    macd_h         = macd_l - macd_s
+    vol_spike_s    = vol / vol.rolling(20).mean()
+    daily_ret_s    = close.pct_change()
+
+    df["RSI_lag1"]       = rsi_series.shift(1)
+    df["RSI_lag3"]       = rsi_series.shift(3)
+    df["MACD_Hist_lag1"] = macd_h.shift(1)
+    df["Return_lag2"]    = daily_ret_s.shift(2)
+    df["Vol_Spike_lag1"] = vol_spike_s.shift(1)
+
+    # Phase 8: Max Pain distance — neutral 0 in training (no historical options data)
+    df["Max_Pain_Dist"]  = 0.0
+
+    # ── Phase 9: Fundamental enrichment ──────────────────────────────────────
+    # EPS Surprise + Promoter change: neutral during training (quarterly data)
+    # Live prediction overrides with real Screener.in values
+    df["EPS_Surprise"]    = 0.0
+    df["Promoter_Change"] = 0.0
+
+    # ── Phase 9: Sector rotation ─────────────────────────────────────────────
+    # Neutral during training; overridden live with sector momentum data
+    df["Sector_Momentum"] = 0.5
+    df["Sector_Rel_Perf"] = df["Rel_Strength"].rolling(5).mean().fillna(0)
+
     # Stock identity (for global model)
     df["Ticker"] = ticker_code
     df["Sector"] = sector_code
 
-    # ── Target: 5-day forward return > 0.5% ──
+    # ── Phase 8: Volatility-adjusted prediction target ────────────────────────
+    # Fixed 0.5% threshold treats a ₹200 stock same as a ₹4000 stock.
+    # Scale threshold by the stock's own daily volatility × sqrt(5 days).
+    # 0.5 × (20d std × sqrt(5)) means: require 0.5 sigma move, not just 0.5%.
+    # Clip between 0.3% and 2.5% to avoid extremes.
+    daily_vol_20    = close.pct_change().rolling(20).std()
+    vol_threshold   = (daily_vol_20 * np.sqrt(RETURN_DAYS) * 0.5).clip(0.003, 0.025)
     df["Return_5d"] = close.pct_change(RETURN_DAYS).shift(-RETURN_DAYS)
-    df["Target"]    = (df["Return_5d"] > RETURN_MIN).astype(int)
+    df["Target"]    = (df["Return_5d"] > vol_threshold).astype(int)
 
     df.dropna(inplace=True)
     return df
