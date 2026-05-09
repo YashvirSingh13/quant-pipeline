@@ -1,4 +1,4 @@
-# QP-2304b663-33c 2026-05-09 03:07:42
+# QP-38544345-675 2026-05-09 03:14:00
 """
 ml/train.py — v5: Four targeted improvements toward 72-74% CV ceiling.
 
@@ -31,7 +31,6 @@ from xgboost import XGBClassifier
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import LabelEncoder
-from sklearn.calibration import CalibratedClassifierCV
 
 warnings.filterwarnings("ignore")
 
@@ -392,16 +391,47 @@ def make_xgb(scale_pos_weight=1.0):
         random_state=42,
     )
 
+class CalibratedModel:
+    """
+    Manual isotonic calibration wrapper — works on all sklearn versions.
+    Maps raw XGBoost probabilities to true calibrated probabilities
+    using isotonic regression on the training data.
+    """
+    def __init__(self, base_model, calibrator):
+        self.base_model  = base_model
+        self.calibrator  = calibrator   # IsotonicRegression instance
+
+    def predict_proba(self, X):
+        raw = self.base_model.predict_proba(X)[:, 1]
+        cal = self.calibrator.predict(np.clip(raw, 0, 1))
+        cal = np.clip(cal, 0, 1)
+        return np.column_stack([1 - cal, cal])
+
+    def predict(self, X):
+        return (self.predict_proba(X)[:, 1] >= 0.5).astype(int)
+
+    def get_booster(self):
+        return self.base_model.get_booster()
+
+    def get_params(self, deep=True):
+        return self.base_model.get_params(deep=deep)
+
+    def __getattr__(self, name):
+        # Delegate unknown attributes to base model
+        return getattr(self.base_model, name)
+
+
 def calibrate_model(model, X, y):
     """
-    IMPROVEMENT 3: Isotonic calibration.
-    Wraps trained XGBoost so predict_proba returns true probabilities.
-    cv='prefit' means model is already trained — only the calibration
-    sigmoid/isotonic layer is fitted on the same data.
+    IMPROVEMENT 3: Isotonic calibration — sklearn version agnostic.
+    Uses IsotonicRegression directly to map raw XGBoost scores to
+    true probabilities. 68% confidence = 68% historical win rate.
     """
-    cal = CalibratedClassifierCV(model, method="isotonic", cv="prefit")
-    cal.fit(X, y)
-    return cal
+    from sklearn.isotonic import IsotonicRegression
+    raw_probs = model.predict_proba(X)[:, 1]
+    iso = IsotonicRegression(out_of_bounds="clip")
+    iso.fit(raw_probs, y.values)
+    return CalibratedModel(model, iso)
 
 # ── Main training function ────────────────────────────────────────────────────
 def train():
