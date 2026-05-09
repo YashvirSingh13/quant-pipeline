@@ -1,4 +1,4 @@
-# QP-a1aec85a-31a 2026-05-09 17:45:28
+# QP-225aaecf-8ae 2026-05-09 17:56:59
 # QuantPipeline server QP-c04c8d65-e1d generated 2026-05-09 02:37:35
 """
 server/app.py — Upgraded FastAPI backend v4.
@@ -1454,8 +1454,26 @@ def predict_live(ticker: str):
             "leader_lagger":     ll_res,
             "sector_rotation":   secr_res,
             "eps_fundamental":   eps_for_fusion,
+            # Short-name aliases — old JS ENGINE_LABELS fallback uses these
+            "Sect Corr":         sec_res,
+            "Ldr-Lagger":        ll_res,
+            "Sect Rotn":         secr_res,
+            "EPS/Promo":         eps_for_fusion,
         },
         "nse_data":       nse_res,
+        "engine_labels": {
+            "sector_corr":       "Sect Corr",
+            "leader_lagger":     "Ldr-Lagger",
+            "sector_rotation":   "Sect Rotn",
+            "eps_fundamental":   "EPS/Promo",
+            "multi_timeframe":   "Multi-TF",
+            "mean_reversion":    "Mean Rev",
+            "fundamental_rank":  "Fundamental",
+            "volatility_regime": "Vol Regime",
+            "sentiment":         "Sentiment",
+            "hmm_regime":        "HMM Regime",
+            "xgboost":           "XGBoost ML",
+        },
         "shap":           shap_result,
         "trade_levels":   trade_levels,
         "fundamentals":   fundamentals,
