@@ -1,4 +1,4 @@
-<!DOCTYPE html><!-- QP-225aaecf-8ae 2026-05-09 17:56:59 -->
+<!DOCTYPE html><!-- QP-127621e5-5c4 2026-05-09 18:06:20 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1223,7 +1223,7 @@ function renderHorizon(horizon){
 // ── Consensus ─────────────────────────────────────────────────────────────────
 function renderConsensus(consensus,engines){
   // Override ENGINE_LABELS with server-provided short names
-  if(d&&d.engine_labels) Object.assign(ENGINE_LABELS, d.engine_labels);
+  if(consensus&&consensus.engine_labels) Object.assign(ENGINE_LABELS, consensus.engine_labels);
 
   if(!consensus) return;
   document.getElementById("consensus-panel").style.display="block";
