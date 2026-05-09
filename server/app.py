@@ -1046,6 +1046,181 @@ def engine_performance():
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+
+@app.get("/live")
+def predict_live(ticker: str):
+    # Download stock data
+    df = yf.download(ticker, period="14mo", interval="1d",
+                     auto_adjust=True, progress=False)
+    if df is None or df.empty or len(df) < 60:
+        raise HTTPException(status_code=404,
+                            detail=f"No data found for '{ticker}'. Check ticker symbol.")
+
+    # Compute features
+    try:
+        feats = _live_features(ticker, df=df)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    # XGBoost prediction
+    try:
+        ml_result = _run_predict(ticker, feats)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    # Parallel engines
+    from engines import mean_reversion, multi_timeframe, sentiment
+    from engines import volatility_regime, fundamental_rank, fusion
+    from engines import hmm_regime, sector_correlation, leader_lagger
+    from engines import nse_data, sector_rotation, eps_data
+
+    def _safe(fn, *args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            name = getattr(fn, "__module__", "unknown").split(".")[-1]
+            return {"engine": name, "signal": "NEUTRAL", "score": 0.5, "detail": str(e)}
+
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        fut_mr   = ex.submit(_safe, mean_reversion.run, ticker, df)
+        fut_mtf  = ex.submit(_safe, multi_timeframe.run, ticker, df)
+        fut_sen  = ex.submit(_safe, sentiment.run, ticker)
+        fut_vix  = ex.submit(_safe, volatility_regime.run)
+        fut_fun  = ex.submit(_safe, fundamental_rank.run, ticker, SECTOR_MAP, SECTOR_BENCHMARKS)
+        fut_hmm  = ex.submit(_safe, hmm_regime.run, ticker, df)
+        fut_sec  = ex.submit(_safe, sector_correlation.run, ticker, SECTOR_PEERS, df)
+        fut_ll   = ex.submit(_safe, leader_lagger.run, ticker)
+        fut_nse  = ex.submit(_safe, nse_data.fetch_all)
+        fut_secr = ex.submit(_safe, sector_rotation.run, ticker, SECTOR_MAP.get(ticker, 7))
+        fut_eps  = ex.submit(_safe, eps_data.fetch_eps_data, ticker)
+
+        mr_res   = fut_mr.result(timeout=25)
+        mtf_res  = fut_mtf.result(timeout=25)
+        sen_res  = fut_sen.result(timeout=25)
+        vix_res  = fut_vix.result(timeout=25)
+        fun_res  = fut_fun.result(timeout=25)
+        try:
+            hmm_res = fut_hmm.result(timeout=45)
+        except Exception:
+            hmm_res = {"engine":"hmm_regime","signal":"NEUTRAL","score":0.5,"regime":"UNKNOWN","detail":"HMM timeout"}
+        sec_res  = fut_sec.result(timeout=25)
+        ll_res   = fut_ll.result(timeout=25)
+        nse_res  = fut_nse.result(timeout=25)
+        secr_res = fut_secr.result(timeout=25)
+        eps_res  = fut_eps.result(timeout=25)
+
+    # Tag engines for fusion
+    sec_res["engine"]   = "sector_corr"
+    ll_res["engine"]    = "leader_lagger"
+    secr_res["engine"]  = "sector_rotation"
+    eps_for_fusion = {
+        "engine": "eps_fundamental",
+        "signal": eps_res.get("signal","NEUTRAL"),
+        "score":  {"BUY":0.68,"SELL":0.32,"NEUTRAL":0.50}.get(eps_res.get("signal","NEUTRAL"),0.50),
+        "detail": eps_res.get("detail",""),
+    }
+    xgb_for_fusion = {
+        "engine": "xgboost",
+        "signal": ml_result["signal"],
+        "score":  ml_result["probability"] / 100,
+        "detail": f"XGBoost prob {ml_result['probability']}%",
+    }
+
+    # Inject live NSE features
+    try:
+        pcr_data = nse_res.get("pcr", {})
+        fii_data = nse_res.get("fii_dii", {})
+        brd_data = nse_res.get("breadth", {})
+        mp_data  = nse_res.get("max_pain", {})
+        feats["PCR"]           = float(pcr_data.get("pcr", 1.0))
+        feats["PCR_Signal"]    = float(np.clip((feats["PCR"] - 1.0) / 0.25, -2, 2))
+        feats["FII_Net_Norm"]  = float(fii_data.get("fii_normalised", 0.0))
+        feats["DII_Net_Norm"]  = float(fii_data.get("dii_normalised", 0.0))
+        feats["Breadth_Pct"]   = float(brd_data.get("breadth_pct", 50.0))
+        feats["AdvDec_Ratio"]  = float(brd_data.get("adv_pct", 50.0))
+        feats["Max_Pain_Dist"] = float(mp_data.get("distance_pct", 0.0))
+        feats["EPS_Surprise"]    = float(eps_res.get("eps_surprise", 0.0))
+        feats["Promoter_Change"] = float(eps_res.get("promoter_chg", 0.0))
+        feats["Sector_Momentum"] = float(secr_res.get("sector_rank", 0.5))
+        feats["Sector_Rel_Perf"] = float(secr_res.get("sector_rel_perf", 0.0))
+    except Exception as _ne:
+        print(f"⚠  NSE feature injection failed: {_ne}")
+
+    # Fuse signals
+    vix_multiplier  = vix_res.get("confidence_multiplier", 1.0)
+    current_regime  = hmm_res.get("regime", "UNKNOWN")
+    consensus = fusion.fuse(
+        [xgb_for_fusion, mr_res, mtf_res, sen_res, fun_res,
+         sec_res, ll_res, secr_res, eps_for_fusion],
+        vix_multiplier=vix_multiplier,
+        regime=current_regime,
+        hmm_vector=hmm_res.get("vector", {}),
+    )
+    consensus["vix_engine"] = vix_res
+    consensus["hmm_regime"] = hmm_res
+
+    # Trade levels & position sizing
+    trade_levels = _compute_trade_levels(feats, consensus, ml_result)
+
+    # Register stock
+    is_new = _register_stock(ticker)
+    if is_new:
+        _schedule_auto_retrain()
+
+    # SHAP
+    shap_result = []
+    try:
+        from ml.explain import explain_prediction
+        model_used, feat_list, _ = _get_model_for_ticker(ticker)
+        clean_feats = {k: v for k, v in feats.items() if not k.startswith("_")}
+        shap_result = explain_prediction(clean_feats, model_used, feat_list)
+    except Exception as exc:
+        print(f"⚠  SHAP failed: {exc}")
+
+    # Fundamentals
+    fundamentals = None
+    try:
+        fundamentals = _compute_fundamentals(ticker, feats)
+    except Exception as exc:
+        print(f"⚠  Fundamentals failed: {exc}")
+
+    # Trading horizon
+    horizon = {"horizons": [], "recommended": [], "primary": "Short-term"}
+    try:
+        from engines.multi_timeframe import get_trends
+        trends = get_trends(df)
+        horizon = _compute_trading_horizon(feats, trends, fun_res, vix_res)
+    except Exception as exc:
+        print(f"⚠  Horizon failed: {exc}")
+
+    return _json_safe({
+        **ml_result,
+        "consensus":      consensus,
+        "features":       {k: v for k, v in feats.items() if not k.startswith("_")},
+        "last_price":     feats.get("_last_price", 0),
+        "as_of":          feats.get("_as_of", ""),
+        "engines": {
+            "mean_reversion":    mr_res,
+            "multi_timeframe":   mtf_res,
+            "sentiment":         sen_res,
+            "volatility_regime": vix_res,
+            "fundamental_rank":  fun_res,
+            "hmm_regime":        hmm_res,
+            "sector_corr":       sec_res,
+            "leader_lagger":     ll_res,
+            "sector_rotation":   secr_res,
+            "eps_fundamental":   eps_for_fusion,
+        },
+        "nse_data":       nse_res,
+        "shap":           shap_result,
+        "trade_levels":   trade_levels,
+        "fundamentals":   fundamentals,
+        "horizon":        horizon,
+        "new_stock":      is_new,
+        "learning":       is_new or _learning,
+        "total_stocks":   len(_load_known_stocks()),
+    })
+
 @app.get("/backtest")
 def backtest_ticker(ticker: str, period: str = "3y"):
     """
