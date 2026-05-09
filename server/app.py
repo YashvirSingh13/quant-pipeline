@@ -1,3 +1,4 @@
+# QuantPipeline server QP-c04c8d65-e1d generated 2026-05-09 02:37:35
 """
 server/app.py — Upgraded FastAPI backend v4.
 
@@ -20,7 +21,7 @@ import numpy as np
 import joblib
 import yfinance as yf
 import pandas as pd
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Body
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -94,6 +95,70 @@ SECTOR_MAP = {
     # Other / Consumer Discretionary / Telecom / Retail
     "ASIANPAINT.NS":9, "TITAN.NS":9,      "TRENT.NS":9,     "BHARTIARTL.NS":9,
     "PIDILITIND.NS":9, "DMART.NS":9,      "NYKAA.NS":9,     "ZOMATO.NS":9,
+}
+
+
+# ── Sector peer groups (for sector correlation engine) ───────────────────────
+SECTOR_PEERS = {
+    # Banking
+    "HDFCBANK.NS":   ["ICICIBANK.NS","SBIN.NS","AXISBANK.NS","KOTAKBANK.NS"],
+    "ICICIBANK.NS":  ["HDFCBANK.NS","SBIN.NS","AXISBANK.NS","KOTAKBANK.NS"],
+    "SBIN.NS":       ["HDFCBANK.NS","ICICIBANK.NS","AXISBANK.NS","BANDHANBNK.NS"],
+    "AXISBANK.NS":   ["HDFCBANK.NS","ICICIBANK.NS","SBIN.NS","KOTAKBANK.NS"],
+    "KOTAKBANK.NS":  ["HDFCBANK.NS","ICICIBANK.NS","AXISBANK.NS"],
+    "INDUSINDBK.NS": ["AXISBANK.NS","KOTAKBANK.NS","FEDERALBNK.NS"],
+    # Finance
+    "BAJFINANCE.NS": ["BAJAJFINSV.NS","SBILIFE.NS","HDFCLIFE.NS"],
+    "BAJAJFINSV.NS": ["BAJFINANCE.NS","SBILIFE.NS"],
+    "SBILIFE.NS":    ["HDFCLIFE.NS","BAJFINANCE.NS"],
+    "HDFCLIFE.NS":   ["SBILIFE.NS","BAJFINANCE.NS"],
+    # IT
+    "TCS.NS":        ["INFY.NS","WIPRO.NS","HCLTECH.NS","TECHM.NS"],
+    "INFY.NS":       ["TCS.NS","WIPRO.NS","HCLTECH.NS","TECHM.NS"],
+    "WIPRO.NS":      ["TCS.NS","INFY.NS","HCLTECH.NS"],
+    "HCLTECH.NS":    ["TCS.NS","INFY.NS","WIPRO.NS","TECHM.NS"],
+    "TECHM.NS":      ["INFY.NS","WIPRO.NS","HCLTECH.NS"],
+    "LTIM.NS":       ["TCS.NS","INFY.NS","WIPRO.NS"],
+    # Auto
+    "TATAMOTORS.NS": ["MARUTI.NS","BAJAJ-AUTO.NS","HEROMOTOCO.NS","M&M.NS"],
+    "MARUTI.NS":     ["TATAMOTORS.NS","M&M.NS","HEROMOTOCO.NS"],
+    "BAJAJ-AUTO.NS": ["HEROMOTOCO.NS","TATAMOTORS.NS","EICHERMOT.NS"],
+    "HEROMOTOCO.NS": ["BAJAJ-AUTO.NS","TATAMOTORS.NS","EICHERMOT.NS"],
+    "M&M.NS":        ["TATAMOTORS.NS","MARUTI.NS"],
+    "EICHERMOT.NS":  ["BAJAJ-AUTO.NS","HEROMOTOCO.NS"],
+    # Energy
+    "RELIANCE.NS":   ["ONGC.NS","BPCL.NS","NTPC.NS"],
+    "ONGC.NS":       ["RELIANCE.NS","BPCL.NS","COALINDIA.NS"],
+    "BPCL.NS":       ["ONGC.NS","RELIANCE.NS","COALINDIA.NS"],
+    "NTPC.NS":       ["POWERGRID.NS","COALINDIA.NS"],
+    "POWERGRID.NS":  ["NTPC.NS","COALINDIA.NS"],
+    "COALINDIA.NS":  ["ONGC.NS","NTPC.NS","POWERGRID.NS"],
+    # FMCG
+    "HINDUNILVR.NS": ["ITC.NS","BRITANNIA.NS","NESTLEIND.NS","TATACONSUM.NS"],
+    "ITC.NS":        ["HINDUNILVR.NS","BRITANNIA.NS","TATACONSUM.NS"],
+    "BRITANNIA.NS":  ["HINDUNILVR.NS","ITC.NS","NESTLEIND.NS"],
+    "NESTLEIND.NS":  ["HINDUNILVR.NS","BRITANNIA.NS","TATACONSUM.NS"],
+    "TATACONSUM.NS": ["ITC.NS","HINDUNILVR.NS","NESTLEIND.NS"],
+    # Pharma
+    "SUNPHARMA.NS":  ["DRREDDY.NS","CIPLA.NS","DIVISLAB.NS","APOLLOHOSP.NS"],
+    "DRREDDY.NS":    ["SUNPHARMA.NS","CIPLA.NS","DIVISLAB.NS"],
+    "CIPLA.NS":      ["SUNPHARMA.NS","DRREDDY.NS","DIVISLAB.NS"],
+    "DIVISLAB.NS":   ["SUNPHARMA.NS","CIPLA.NS","DRREDDY.NS"],
+    "APOLLOHOSP.NS": ["SUNPHARMA.NS","CIPLA.NS"],
+    # Metals
+    "TATASTEEL.NS":  ["JSWSTEEL.NS","HINDALCO.NS"],
+    "JSWSTEEL.NS":   ["TATASTEEL.NS","HINDALCO.NS"],
+    "HINDALCO.NS":   ["TATASTEEL.NS","JSWSTEEL.NS"],
+    # Infra / Cement
+    "LT.NS":         ["ADANIPORTS.NS","ULTRACEMCO.NS","GRASIM.NS"],
+    "ADANIPORTS.NS": ["LT.NS","ULTRACEMCO.NS"],
+    "ULTRACEMCO.NS": ["GRASIM.NS","LT.NS","ADANIPORTS.NS"],
+    "GRASIM.NS":     ["ULTRACEMCO.NS","LT.NS"],
+    # Other
+    "ASIANPAINT.NS": ["TITAN.NS","TRENT.NS"],
+    "TITAN.NS":      ["ASIANPAINT.NS","TRENT.NS"],
+    "TRENT.NS":      ["TITAN.NS","ASIANPAINT.NS"],
+    "BHARTIARTL.NS": ["RELIANCE.NS"],
 }
 
 # ── Sector benchmarks (approximate NSE averages) ────────────────────────────────
@@ -935,17 +1000,13 @@ def list_stocks():
             "per_stock_trained": per_stock_trained, "total": len(stocks)}
 
 @app.post("/predict")
-async def predict_manual(request: Request):
+def predict_manual(body: dict = Body(...)):
     """
-    Manual prediction. Downloads fresh stock data for the ticker,
-    computes all 69 features identically to the live endpoint,
-    then overrides the 12 visible form fields with the user's values.
-    This guarantees identical results to live when fields are unchanged.
+    Manual prediction. Uses sync def (not async) so _live_features()
+    runs in FastAPI's thread pool and never blocks the async event loop.
+    Body(...) receives raw JSON dict without Pydantic field stripping.
     """
-    try:
-        body = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
 
     ticker = body.get("ticker","") or "UNKNOWN"
     # Normalise ticker
@@ -1049,6 +1110,195 @@ def engine_performance():
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
+
+
+@app.get("/live")
+def predict_live(ticker: str):
+    # Download stock data
+    df = yf.download(ticker, period="14mo", interval="1d",
+                     auto_adjust=True, progress=False)
+    if df is None or df.empty or len(df) < 60:
+        raise HTTPException(status_code=404,
+                            detail=f"No data found for '{ticker}'. Check ticker symbol.")
+
+    # Compute features
+    try:
+        feats = _live_features(ticker, df=df)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    # XGBoost prediction
+    try:
+        ml_result = _run_predict(ticker, feats)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    # Parallel engines
+    from engines import mean_reversion, multi_timeframe, sentiment
+    from engines import volatility_regime, fundamental_rank, fusion
+    from engines import hmm_regime, sector_correlation, leader_lagger
+    from engines import nse_data, sector_rotation, eps_data
+
+    def _safe(fn, *args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            name = getattr(fn, "__module__", "unknown").split(".")[-1]
+            return {"engine": name, "signal": "NEUTRAL", "score": 0.5, "detail": str(e)}
+
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        fut_mr   = ex.submit(_safe, mean_reversion.run, ticker, df)
+        fut_mtf  = ex.submit(_safe, multi_timeframe.run, ticker, df)
+        fut_sen  = ex.submit(_safe, sentiment.run, ticker)
+        fut_vix  = ex.submit(_safe, volatility_regime.run)
+        fut_fun  = ex.submit(_safe, fundamental_rank.run, ticker, SECTOR_MAP, SECTOR_BENCHMARKS)
+        fut_hmm  = ex.submit(_safe, hmm_regime.run, ticker, df)
+        peers    = SECTOR_PEERS.get(ticker, [])
+        fut_sec  = ex.submit(_safe, sector_correlation.run, ticker, peers, df)
+        fut_ll   = ex.submit(_safe, leader_lagger.run, ticker)
+        fut_nse  = ex.submit(_safe, nse_data.fetch_all)
+        fut_secr = ex.submit(_safe, sector_rotation.run, ticker, SECTOR_MAP.get(ticker, 7))
+        fut_eps  = ex.submit(_safe, eps_data.fetch_eps_data, ticker)
+
+        mr_res   = fut_mr.result(timeout=25)
+        mtf_res  = fut_mtf.result(timeout=25)
+        sen_res  = fut_sen.result(timeout=25)
+        vix_res  = fut_vix.result(timeout=25)
+        fun_res  = fut_fun.result(timeout=25)
+        try:
+            hmm_res = fut_hmm.result(timeout=45)
+        except Exception:
+            hmm_res = {"engine":"hmm_regime","signal":"NEUTRAL","score":0.5,"regime":"UNKNOWN","detail":"HMM timeout"}
+        sec_res  = fut_sec.result(timeout=25)
+        ll_res   = fut_ll.result(timeout=25)
+        nse_res  = fut_nse.result(timeout=25)
+        secr_res = fut_secr.result(timeout=25)
+        eps_res  = fut_eps.result(timeout=25)
+
+    # Tag engines for fusion
+    sec_res["engine"]   = "sector_corr"
+    ll_res["engine"]    = "leader_lagger"
+    secr_res["engine"]  = "sector_rotation"
+    eps_for_fusion = {
+        "engine": "eps_fundamental",
+        "signal": eps_res.get("signal","NEUTRAL"),
+        "score":  {"BUY":0.68,"SELL":0.32,"NEUTRAL":0.50}.get(eps_res.get("signal","NEUTRAL"),0.50),
+        "detail": eps_res.get("detail",""),
+    }
+    xgb_for_fusion = {
+        "engine": "xgboost",
+        "signal": ml_result["signal"],
+        "score":  ml_result["probability"] / 100,
+        "detail": f"XGBoost prob {ml_result['probability']}%",
+    }
+
+    # Inject live NSE features
+    try:
+        pcr_data = nse_res.get("pcr", {})
+        fii_data = nse_res.get("fii_dii", {})
+        brd_data = nse_res.get("breadth", {})
+        mp_data  = nse_res.get("max_pain", {})
+        feats["PCR"]           = float(pcr_data.get("pcr", 1.0))
+        feats["PCR_Signal"]    = float(np.clip((feats["PCR"] - 1.0) / 0.25, -2, 2))
+        feats["FII_Net_Norm"]  = float(fii_data.get("fii_normalised", 0.0))
+        feats["DII_Net_Norm"]  = float(fii_data.get("dii_normalised", 0.0))
+        feats["Breadth_Pct"]   = float(brd_data.get("breadth_pct", 50.0))
+        feats["AdvDec_Ratio"]  = float(brd_data.get("adv_pct", 50.0))
+        feats["Max_Pain_Dist"] = float(mp_data.get("distance_pct", 0.0))
+        feats["EPS_Surprise"]    = float(eps_res.get("eps_surprise", 0.0))
+        feats["Promoter_Change"] = float(eps_res.get("promoter_chg", 0.0))
+        feats["Sector_Momentum"] = float(secr_res.get("sector_rank", 0.5))
+        feats["Sector_Rel_Perf"] = float(secr_res.get("sector_rel_perf", 0.0))
+    except Exception as _ne:
+        print(f"⚠  NSE feature injection failed: {_ne}")
+
+    # Fuse signals
+    vix_multiplier  = vix_res.get("confidence_multiplier", 1.0)
+    current_regime  = hmm_res.get("regime", "UNKNOWN")
+    consensus = fusion.fuse(
+        [xgb_for_fusion, mr_res, mtf_res, sen_res, fun_res,
+         sec_res, ll_res, secr_res, eps_for_fusion],
+        vix_multiplier=vix_multiplier,
+        hmm_regime_result=hmm_res,
+        current_regime=current_regime,
+    )
+    consensus["vix_engine"] = vix_res
+    consensus["hmm_regime"] = hmm_res
+
+    # Trade levels & position sizing (pass minimal horizon placeholder now,
+    # full horizon computed later)
+    _tmp_horizon = {"primary": "Short-term"}
+    trade_levels = _compute_trade_levels(feats, consensus,
+                                         ml_result.get("signal","NEUTRAL"),
+                                         _tmp_horizon)
+
+    # Register stock
+    is_new = _register_stock(ticker)
+    if is_new:
+        _schedule_auto_retrain()
+
+    # SHAP
+    shap_result = []
+    try:
+        from ml.explain import explain_prediction
+        model_used, feat_list, _ = _get_model_for_ticker(ticker)
+        clean_feats = {k: v for k, v in feats.items() if not k.startswith("_")}
+        shap_result = explain_prediction(clean_feats, model_used, feat_list)
+    except Exception as exc:
+        # Silently skip SHAP on feature mismatch (old model vs new features)
+        # Will work correctly after next retrain
+        if "18 vs" not in str(exc) and "vs. 69" not in str(exc):
+            print(f"⚠  SHAP failed: {exc}")
+
+    # Fundamentals
+    fundamentals = None
+    try:
+        fundamentals = _compute_fundamentals(ticker, feats)
+    except Exception as exc:
+        print(f"⚠  Fundamentals failed: {exc}")
+
+    # Trading horizon — use mtf_res already computed above
+    horizon = {"horizons": [], "recommended": [], "primary": "Short-term"}
+    try:
+        horizon = _compute_trading_horizon(feats, mtf_res, fun_res, vix_res)
+    except Exception as exc:
+        print(f"⚠  Horizon failed: {exc}")
+
+    # Now recompute trade_levels with the real horizon
+    try:
+        trade_levels = _compute_trade_levels(feats, consensus,
+                                             ml_result.get("signal","NEUTRAL"),
+                                             horizon)
+    except Exception:
+        pass  # keep the placeholder trade_levels from above
+
+    return _json_safe({
+        **ml_result,
+        "consensus":      consensus,
+        "features":       {k: v for k, v in feats.items() if not k.startswith("_")},
+        "last_price":     feats.get("_last_price", 0),
+        "as_of":          feats.get("_as_of", ""),
+        "engines": {
+            "mean_reversion":    mr_res,
+            "multi_timeframe":   mtf_res,
+            "sentiment":         sen_res,
+            "volatility_regime": vix_res,
+            "fundamental_rank":  fun_res,
+            "hmm_regime":        hmm_res,
+            "sector_corr":       sec_res,
+            "leader_lagger":     ll_res,
+            "sector_rotation":   secr_res,
+            "eps_fundamental":   eps_for_fusion,
+        },
+        "nse_data":       nse_res,
+        "shap":           shap_result,
+        "trade_levels":   trade_levels,
+        "fundamentals":   fundamentals,
+        "horizon":        horizon,
+        "new_stock":      is_new,
+        "learning":       is_new or _learning,
+        "total_stocks":   len(_load_known_stocks()),
+    })
 
 @app.get("/backtest")
 def backtest_ticker(ticker: str, period: str = "3y"):
