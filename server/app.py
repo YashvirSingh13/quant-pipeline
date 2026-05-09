@@ -1,4 +1,4 @@
-# QP-1816a3d1-9b1 2026-05-09 16:07:24
+# QP-d3a7f777-a55 2026-05-09 17:09:20
 # QuantPipeline server QP-c04c8d65-e1d generated 2026-05-09 02:37:35
 """
 server/app.py — Upgraded FastAPI backend v4.
@@ -47,7 +47,8 @@ MODEL_BULL     = os.path.join(DATA_DIR, "model_bull.pkl")
 MODEL_NORMAL   = os.path.join(DATA_DIR, "model_normal.pkl")
 MODEL_VOLATILE = os.path.join(DATA_DIR, "model_volatile.pkl")
 LE_PATH     = os.path.join(DATA_DIR, "label_encoder.pkl")
-META_PATH   = os.path.join(DATA_DIR, "model_metadata.json")
+META_PATH           = os.path.join(DATA_DIR, "model_metadata.json")
+PRUNED_FEATURES_PATH= os.path.join(DATA_DIR, "pruned_features.json")
 PUBLIC_DIR  = os.path.join(ROOT_DIR,  "public")
 
 # Full Nifty 50 universe — used to expand the registry on startup
@@ -496,11 +497,27 @@ def _compute_trade_levels(feats: dict, consensus: dict, ml_signal: str,
 
 # ── Feature lists (must match train.py exactly) ──────────────────────────────────
 STOCK_FEATURES = [
-    "RSI", "MA50", "MA200", "MA_Cross", "Volatility",
-    "MACD", "MACD_Signal", "MACD_Hist", "BB_Width",
+    "RSI", "MA50", "MA200", "Volatility",
+    "MACD_Hist", "BB_Width",
     "Volume_Log", "Volume_Spike", "ATR",
     "High52W_Pct", "Low52W_Pct",
     "Market_Return", "Market_Regime", "Earnings_Season",
+    "Return_1d", "Return_5d_lag", "Return_20d",
+    "Beta_60d", "Rel_Strength",
+    "Dist_MA20", "Dist_MA50", "MA20_Slope", "MA50_Slope", "BB_Position",
+    "USDINR_Return", "Crude_Return",
+    "Month_Sin", "Month_Cos", "Is_Budget_Month", "Is_Monsoon",
+    "SP500_Return",
+    "VIX_US_Level", "VIX_IN_ROC5", "VIX_IN_Pct",
+    "US10Y_Level", "US10Y_Chg", "FII_Proxy",
+    "Copper_Return", "Shanghai_Return",
+    "NASDAQ_IT", "USD_Export",
+    "Crude_Sector", "Copper_Sector", "Shanghai_Sector", "Yield_Banking", "Monsoon_FMCG",
+    "PCR", "PCR_Signal", "FII_Net_Norm", "DII_Net_Norm", "Breadth_Pct",
+    "RSI_lag1", "RSI_lag3", "MACD_Hist_lag1", "Return_lag2", "Vol_Spike_lag1",
+    "Max_Pain_Dist",
+    "EPS_Surprise", "Promoter_Change", "Sector_Momentum", "Sector_Rel_Perf",
+    "Delivery_Pct_Proxy",
 ]
 GLOBAL_FEATURES = STOCK_FEATURES + ["Ticker", "Sector"]
 
@@ -952,6 +969,10 @@ def _live_features(ticker: str, df=None) -> dict:
         # UI extras
         "_last_price":    float(close.iloc[-1]),
         "_as_of":         str(df.index[-1].date()),
+        "Delivery_Pct_Proxy": float(np.clip(
+            feats.get("Volume_Spike", 1.0) /
+            max(0.01, 1 + abs(feats.get("ATR", 1.0)) /
+                max(0.01, feats.get("_last_price", 100.0)) * 10), 0, 2)),
     }
     return feats
 
@@ -1301,10 +1322,24 @@ def predict_live(ticker: str):
         secr_res = fut_secr.result(timeout=25)
         eps_res  = fut_eps.result(timeout=25)
 
-    # Tag engines for fusion
-    sec_res["engine"]   = "sector_corr"
-    ll_res["engine"]    = "leader_lagger"
-    secr_res["engine"]  = "sector_rotation"
+    # Tag engines for fusion + add display_name for robust UI rendering
+    DISPLAY_NAMES = {
+        "xgboost":"XGBoost ML", "mean_reversion":"Mean Rev",
+        "multi_timeframe":"Multi-TF", "sentiment":"Sentiment",
+        "volatility_regime":"Vol Regime", "fundamental_rank":"Fundamental",
+        "hmm_regime":"HMM Regime", "sector_corr":"Sect Corr",
+        "leader_lagger":"Ldr-Lagger", "sector_rotation":"Sect Rotn",
+        "eps_fundamental":"EPS/Promo",
+    }
+    sec_res["engine"]       = "sector_corr"
+    sec_res["display_name"] = "Sect Corr"
+    ll_res["engine"]        = "leader_lagger"
+    ll_res["display_name"]  = "Ldr-Lagger"
+    secr_res["engine"]      = "sector_rotation"
+    secr_res["display_name"]= "Sect Rotn"
+    for _res in [mr_res, mtf_res, sen_res, vix_res, fun_res, hmm_res]:
+        if isinstance(_res, dict) and "engine" in _res:
+            _res["display_name"] = DISPLAY_NAMES.get(_res["engine"], _res["engine"])
     eps_for_fusion = {
         "engine": "eps_fundamental",
         "signal": eps_res.get("signal","NEUTRAL"),
