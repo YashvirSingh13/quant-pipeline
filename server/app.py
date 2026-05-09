@@ -1,4 +1,4 @@
-# QP-2304b663-33c 2026-05-09 03:07:42
+# QP-d4aedd3a-3a6 2026-05-09 03:21:38
 # QuantPipeline server QP-c04c8d65-e1d generated 2026-05-09 02:37:35
 """
 server/app.py — Upgraded FastAPI backend v4.
@@ -624,6 +624,12 @@ def _get_model_for_ticker(ticker: str, vix_level: float = None):
     if _global_model is None:
         raise RuntimeError("Model not loaded — training in progress")
     return _global_model, GLOBAL_FEATURES, "global"
+
+# Import CalibratedModel so joblib.load can deserialise calibrated models
+try:
+    from ml.calibration import CalibratedModel  # noqa: F401
+except ImportError:
+    pass  # model will still load if not calibrated
 
 def _reload_artefacts():
     global _global_model, _label_encoder, _metadata, _stock_models
