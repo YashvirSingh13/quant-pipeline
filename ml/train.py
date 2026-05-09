@@ -1,4 +1,4 @@
-# QP-d4aedd3a-3a6 2026-05-09 03:21:38
+# QP-ed93b9f4-dff 2026-05-09 03:26:52
 """
 ml/train.py — v5: Four targeted improvements toward 72-74% CV ceiling.
 
@@ -38,6 +38,11 @@ warnings.filterwarnings("ignore")
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR   = os.path.dirname(BASE_DIR)
 DATA_DIR   = os.environ.get("DATA_DIR", os.path.join(ROOT_DIR, "data"))
+
+# Add root to sys.path so 'ml.calibration' is importable when train.py
+# is run directly as a script (python3 /app/ml/train.py)
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
 MODELS_DIR = os.path.join(DATA_DIR, "models")
 os.makedirs(DATA_DIR,   exist_ok=True)
 os.makedirs(MODELS_DIR, exist_ok=True)
