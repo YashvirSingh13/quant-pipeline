@@ -1224,8 +1224,12 @@ def predict_live(ticker: str):
     consensus["vix_engine"] = vix_res
     consensus["hmm_regime"] = hmm_res
 
-    # Trade levels & position sizing
-    trade_levels = _compute_trade_levels(feats, consensus, ml_result)
+    # Trade levels & position sizing (pass minimal horizon placeholder now,
+    # full horizon computed later)
+    _tmp_horizon = {"primary": "Short-term"}
+    trade_levels = _compute_trade_levels(feats, consensus,
+                                         ml_result.get("signal","NEUTRAL"),
+                                         _tmp_horizon)
 
     # Register stock
     is_new = _register_stock(ticker)
@@ -1257,6 +1261,14 @@ def predict_live(ticker: str):
         horizon = _compute_trading_horizon(feats, trends, fun_res, vix_res)
     except Exception as exc:
         print(f"⚠  Horizon failed: {exc}")
+
+    # Now recompute trade_levels with the real horizon
+    try:
+        trade_levels = _compute_trade_levels(feats, consensus,
+                                             ml_result.get("signal","NEUTRAL"),
+                                             horizon)
+    except Exception:
+        pass  # keep the placeholder trade_levels from above
 
     return _json_safe({
         **ml_result,
