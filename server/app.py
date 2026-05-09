@@ -1,4 +1,4 @@
-# QP-d4aedd3a-3a6 2026-05-09 03:21:38
+# QP-ed93b9f4-dff 2026-05-09 03:26:52
 # QuantPipeline server QP-c04c8d65-e1d generated 2026-05-09 02:37:35
 """
 server/app.py — Upgraded FastAPI backend v4.
