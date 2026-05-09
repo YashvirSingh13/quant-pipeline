@@ -1,25 +1,34 @@
-# QP-ed93b9f4-dff 2026-05-09 03:26:52
+# QP-a11d4d92-825 2026-05-09 07:07:11
 """
 ml/calibration.py — Shared calibration class.
+Importable by both train.py and server/app.py so joblib.load works.
 
-Must be in a standalone importable module so both train.py and server/app.py
-can load pickled CalibratedModel instances without AttributeError.
+IMPORTANT: No __getattr__ — it causes infinite recursion during unpickling
+because Python calls __getattr__ to find 'base_model' before it's set.
 """
 import numpy as np
 
 
 class CalibratedModel:
     """
-    Manual isotonic calibration wrapper around any sklearn-compatible model.
-    Maps raw XGBoost probabilities to true calibrated probabilities using
-    IsotonicRegression — no sklearn version dependency.
-
-    Compatible with joblib.dump/load from any module (train.py or server).
+    Manual isotonic calibration wrapper around XGBoost.
+    Maps raw probabilities → true calibrated probabilities.
+    Safe for joblib.dump / joblib.load.
     """
+
     def __init__(self, base_model, calibrator):
         self.base_model = base_model
         self.calibrator = calibrator
 
+    # ── Explicit pickle support (avoids __getattr__ recursion) ───────────────
+    def __getstate__(self):
+        return {"base_model": self.base_model, "calibrator": self.calibrator}
+
+    def __setstate__(self, state):
+        self.base_model = state["base_model"]
+        self.calibrator = state["calibrator"]
+
+    # ── Core interface ────────────────────────────────────────────────────────
     def predict_proba(self, X):
         raw = self.base_model.predict_proba(X)[:, 1]
         cal = np.clip(self.calibrator.predict(np.clip(raw, 0, 1)), 0, 1)
@@ -29,12 +38,10 @@ class CalibratedModel:
         return (self.predict_proba(X)[:, 1] >= 0.5).astype(int)
 
     def get_booster(self):
-        """Expose XGBoost booster for feature name extraction."""
+        """Expose XGBoost booster for feature name extraction in backtest."""
         return self.base_model.get_booster()
 
     def get_params(self, deep=True):
         return self.base_model.get_params(deep=deep)
 
-    def __getattr__(self, name):
-        # Delegate unknown attributes to base model
-        return getattr(self.base_model, name)
+    # NO __getattr__ — it breaks pickle/unpickle
