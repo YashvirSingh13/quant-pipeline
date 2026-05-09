@@ -1,4 +1,4 @@
-# QP-ed93b9f4-dff 2026-05-09 03:26:52
+# QP-59dcb404-4f5 2026-05-09 07:24:39
 # QuantPipeline server QP-c04c8d65-e1d generated 2026-05-09 02:37:35
 """
 server/app.py — Upgraded FastAPI backend v4.
@@ -633,51 +633,56 @@ except ImportError:
 
 def _reload_artefacts():
     global _global_model, _label_encoder, _metadata, _stock_models
-    _stock_models = {}  # clear per-stock cache so fresh models load
+
+    # Ensure ml package is importable so CalibratedModel can be deserialised
+    _app_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if _app_root not in sys.path:
+        sys.path.insert(0, _app_root)
+    try:
+        from ml.calibration import CalibratedModel  # noqa: F401
+    except ImportError as _e:
+        print(f"⚠  CalibratedModel import failed: {_e}")
+
+    _stock_models = {}  # clear cache so fresh models load
 
     if os.path.exists(MODEL_PATH):
-        _global_model = joblib.load(MODEL_PATH)
-        _strip_model_feature_names(_global_model)
-        print("✅ Global model loaded")
+        try:
+            _global_model = joblib.load(MODEL_PATH)
+            print("✅ Global model loaded")
+        except Exception as e:
+            print(f"❌ Global model load failed: {e}")
     else:
-        print("⚠  Global model not found")
+        print("⚠  Global model not found at", MODEL_PATH)
 
     if os.path.exists(LE_PATH):
-        _label_encoder = joblib.load(LE_PATH)
-        print("✅ Label encoder loaded")
-    else:
-        print("⚠  Label encoder not found — will rebuild from metadata")
+        try:
+            _label_encoder = joblib.load(LE_PATH)
+            print("✅ Label encoder loaded")
+        except Exception as e:
+            print(f"❌ Label encoder load failed: {e}")
 
     if os.path.exists(META_PATH):
-        with open(META_PATH) as f: _metadata = json.load(f)
-        # Strip whitespace from stored feature lists too
-        for key in ("global_features","stock_features"):
-            if key in _metadata:
-                _metadata[key] = [f.strip() for f in _metadata[key]]
+        try:
+            with open(META_PATH) as f:
+                _metadata = json.load(f)
+            cv = _metadata.get("cv_accuracy_mean", 0)
+            n  = _metadata.get("n_stocks", 0)
+            print(f"✅ Metadata loaded — CV {cv:.2%} | {n} stocks")
+        except Exception as e:
+            print(f"❌ Metadata load failed: {e}")
 
-    # Fallback: rebuild label encoder from metadata stocks list
-    if _label_encoder is None and _metadata.get("stocks"):
-        le = LabelEncoder()
-        le.fit(sorted(_metadata["stocks"]))
-        _label_encoder = le
-        print(f"✅ Label encoder rebuilt from metadata ({len(_metadata['stocks'])} stocks)")
-
-# ── Helpers: training runner ─────────────────────────────────────────────────────
-def _run_training():
-    train_script = os.path.join(ROOT_DIR, "ml", "train.py")
-    env = {**os.environ, "DATA_DIR": DATA_DIR}
-    subprocess.run([sys.executable, train_script],
-                   check=True, cwd=ROOT_DIR, env=env)
-    _reload_artefacts()
-
-# ── Debounced auto-retrain ───────────────────────────────────────────────────────
-def _schedule_auto_retrain():
-    global _retrain_timer
-    if _retrain_timer: _retrain_timer.cancel()
-    _retrain_timer = threading.Timer(DEBOUNCE_SECS, _do_auto_retrain)
-    _retrain_timer.daemon = True
-    _retrain_timer.start()
-    print(f"⏱  Auto-retrain in {DEBOUNCE_SECS}s …")
+    # Load per-stock models into cache
+    if os.path.exists(MODELS_DIR):
+        loaded = 0
+        for fname in os.listdir(MODELS_DIR):
+            if fname.endswith(".pkl"):
+                ticker = fname.replace("_NS.pkl",".NS").replace("_BO.pkl",".BO")
+                try:
+                    _stock_models[ticker] = joblib.load(os.path.join(MODELS_DIR, fname))
+                    loaded += 1
+                except Exception:
+                    pass
+        print(f"✅ {loaded} per-stock models loaded")
 
 def _do_auto_retrain():
     global _learning, _retrain_timer
@@ -1334,7 +1339,12 @@ def backtest_ticker(ticker: str, period: str = "3y"):
 @app.get("/metadata")
 def get_metadata():
     if not _metadata:
-        raise HTTPException(status_code=404, detail="No metadata yet.")
+        # Return partial info instead of 404 so UI doesn't show "not found"
+        return {
+            "status": "training_in_progress",
+            "model_ready": globals().get("_global_model") is not None,
+            "registered_stocks": _load_known_stocks(),
+        }
     return {**_metadata, "registered_stocks": _load_known_stocks()}
 
 @app.get("/learning")
