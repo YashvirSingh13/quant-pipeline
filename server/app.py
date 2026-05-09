@@ -1,4 +1,4 @@
-# QP-13976070-248 2026-05-09 07:35:58
+# QP-1816a3d1-9b1 2026-05-09 16:07:24
 # QuantPipeline server QP-c04c8d65-e1d generated 2026-05-09 02:37:35
 """
 server/app.py — Upgraded FastAPI backend v4.
@@ -1032,81 +1032,78 @@ def _schedule_auto_retrain():
 def _compute_trading_horizon(feats: dict, mtf_res: dict,
                               fun_res: dict, vix_res: dict) -> dict:
     """
-    Determine recommended trading horizon based on multi-timeframe trends,
-    fundamentals, and volatility regime.
+    Determine recommended trading horizon.
+    Field names match what renderHorizon() in index.html expects:
+    h.horizon, h.period, h.icon, h.suitable, h.confidence, h.reasons
     """
-    horizons = []
+    vix_level  = float(feats.get("VIX_US_Level", 18) or 18)
+    macd_hist  = float(feats.get("MACD_Hist", 0) or 0)
+    bb_width   = float(feats.get("BB_Width", 0.15) or 0.15)
+    volatility = float(feats.get("Volatility", 0.015) or 0.015)
+    mtf_sig    = (mtf_res or {}).get("signal", "NEUTRAL")
+    fun_sig    = (fun_res or {}).get("signal", "NEUTRAL")
+    vix_mult   = float((vix_res or {}).get("confidence_multiplier", 1.0) or 1.0)
 
-    vix_level   = float(feats.get("VIX_US_Level", 18) or 18)
-    rsi         = float(feats.get("RSI", 50) or 50)
-    macd_hist   = float(feats.get("MACD_Hist", 0) or 0)
-    bb_width    = float(feats.get("BB_Width", 0.15) or 0.15)
-    volatility  = float(feats.get("Volatility", 0.015) or 0.015)
-
-    mtf_sig  = (mtf_res or {}).get("signal", "NEUTRAL")
-    fun_sig  = (fun_res or {}).get("signal", "NEUTRAL")
-    vix_mult = float((vix_res or {}).get("confidence_multiplier", 1.0) or 1.0)
-
-    # Intraday (same day) — only in low-volatility, clear trending conditions
-    intraday_conf = "LOW"
-    intraday_reason = ["Model trained on daily data — intraday precision limited"]
+    # Intraday
+    intraday_conf    = "Low"
+    intraday_reasons = ["Model trained on daily data — intraday precision limited"]
     if volatility < 0.01 and abs(macd_hist) > 0.5:
-        intraday_conf = "MEDIUM"
-        intraday_reason = ["Low volatility environment", "Clear momentum signal"]
-    horizons.append({
-        "label":      "Intraday",
-        "suitable":   intraday_conf != "LOW",
-        "confidence": intraday_conf,
-        "days":       "0-1",
-        "reasons":    intraday_reason,
-    })
+        intraday_conf    = "Medium"
+        intraday_reasons = ["Low volatility environment", "Clear momentum signal"]
 
-    # Short-term (3-5 days) — primary model horizon
-    st_conf   = "HIGH" if vix_mult >= 0.9 and mtf_sig != "NEUTRAL" else "MEDIUM"
+    # Short-term 3-5 days (primary model horizon)
+    st_conf    = "High" if vix_mult >= 0.9 and mtf_sig != "NEUTRAL" else "Medium"
     st_reasons = ["MACD histogram positive" if macd_hist > 0 else "MACD histogram negative"]
-    if mtf_sig == "BUY":   st_reasons.append("Multi-timeframe trend: UP_STRONG")
-    if mtf_sig == "SELL":  st_reasons.append("Multi-timeframe trend: DOWN_STRONG")
+    if mtf_sig == "BUY":  st_reasons.append("Multi-timeframe trend: UP_STRONG")
+    if mtf_sig == "SELL": st_reasons.append("Multi-timeframe trend: DOWN_STRONG")
     if vix_level > 22:
-        st_conf = "MEDIUM"
+        st_conf = "Medium"
         st_reasons.append("Elevated volatility — reduce hold period")
-    horizons.append({
-        "label":      "Short-term",
-        "suitable":   True,
-        "confidence": st_conf,
-        "days":       "3-5",
-        "reasons":    st_reasons,
-    })
 
-    # Swing (1-2 weeks)
-    swing_conf    = "MEDIUM"
+    # Swing 1-2 weeks
+    swing_conf    = "Medium"
     swing_reasons = []
     if fun_sig == "BUY":
-        swing_conf = "HIGH"
+        swing_conf = "High"
         swing_reasons.append("Strong fundamentals support swing hold")
     if bb_width > 0.25:
-        swing_conf = "LOW"
+        swing_conf = "Low"
         swing_reasons.append("Wide Bollinger bands — volatile, avoid swing")
     if not swing_reasons:
         swing_reasons = ["Average fundamentals"]
-    horizons.append({
-        "label":      "Swing",
-        "suitable":   swing_conf != "LOW",
-        "confidence": swing_conf,
-        "days":       "7-14",
-        "reasons":    swing_reasons,
-    })
 
-    # Determine primary recommendation
-    suitable = [h for h in horizons if h["suitable"]]
-    primary  = suitable[-1]["label"] if suitable else "Short-term"
-    if vix_level > 25:
-        primary = "Short-term"
+    horizons = [
+        {
+            "horizon":    "Intraday",
+            "icon":       "⚡",
+            "period":     "Same day",
+            "suitable":   intraday_conf != "Low",
+            "confidence": intraday_conf,
+            "reasons":    intraday_reasons,
+        },
+        {
+            "horizon":    "Short-term",
+            "icon":       "📅",
+            "period":     "3-5 days",
+            "suitable":   True,
+            "confidence": st_conf,
+            "reasons":    st_reasons,
+        },
+        {
+            "horizon":    "Swing",
+            "icon":       "📈",
+            "period":     "7-14 days",
+            "suitable":   swing_conf != "Low",
+            "confidence": swing_conf,
+            "reasons":    swing_reasons,
+        },
+    ]
 
-    return {
-        "horizons":    horizons,
-        "recommended": [h["label"] for h in suitable],
-        "primary":     primary,
-    }
+    suitable = [h["horizon"] for h in horizons if h["suitable"]]
+    primary  = suitable[-1] if suitable else "Short-term"
+    if vix_level > 25: primary = "Short-term"
+
+    return {"horizons": horizons, "recommended": suitable, "primary": primary}
 
 @app.get("/health")
 def health():
