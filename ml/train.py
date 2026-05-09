@@ -1,4 +1,4 @@
-# QP-90c73633-e32 2026-05-09 03:00:39
+# QP-2304b663-33c 2026-05-09 03:07:42
 """
 ml/train.py — v5: Four targeted improvements toward 72-74% CV ceiling.
 
