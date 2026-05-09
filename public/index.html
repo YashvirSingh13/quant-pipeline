@@ -1,4 +1,4 @@
-<!DOCTYPE html><!-- QP-127621e5-5c4 2026-05-09 18:06:20 -->
+<!DOCTYPE html><!-- QP-6940a183-cca 2026-05-09 18:15:01 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1447,6 +1447,8 @@ async function fetchLive(){
         {sector_rotation: d.engines?.sector_rotation});
       renderNseData(nseWithRotation);
     }
+    // Update ENGINE_LABELS with server-provided short names (fixes overlap on all devices)
+    if(d.engine_labels) Object.assign(ENGINE_LABELS, d.engine_labels);
     if(d.consensus) renderConsensus(d.consensus,d.engines);
     // Macro context row
     if(d.features){
