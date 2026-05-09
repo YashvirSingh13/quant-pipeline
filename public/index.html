@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html><!-- QP-c04c8d65-e1d generated 2026-05-09 02:37:35 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -508,7 +508,7 @@ select,input,button { font-family:var(--mono);font-size:20px;outline:none; }
 .engine-dot.buy{background:var(--buy);box-shadow:0 0 6px var(--buy)}
 .engine-dot.sell{background:var(--sell);box-shadow:0 0 6px var(--sell)}
 .engine-dot.neutral{background:var(--warn);box-shadow:0 0 4px var(--warn)}
-.engine-name { font-family:var(--display);font-size:11px;font-weight:600;letter-spacing:0;color:var(--text);width:160px;min-width:160px;max-width:160px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:8px; }
+.engine-name { font-family:var(--display) !important;font-size:11px !important;font-weight:600 !important;color:var(--text) !important;width:150px !important;min-width:150px !important;max-width:150px !important;flex-shrink:0 !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;padding-right:8px !important; }
 .engine-sig-badge { font-family:var(--display);font-size:14px;font-weight:700;letter-spacing:1px;width:70px;flex-shrink:0; }
 .engine-sig-badge.buy{color:var(--buy)} .engine-sig-badge.sell{color:var(--sell)} .engine-sig-badge.neutral{color:var(--warn)}
 .engine-bar-track { flex:1;height:4px;background:rgba(255,255,255,.06);border-radius:99px;overflow:hidden; }
@@ -1246,7 +1246,7 @@ function renderConsensus(consensus,engines){
     const cls2=sig2.toLowerCase();
     return `<div class="engine-row">
       <div class="engine-dot ${cls2}"></div>
-      <div class="engine-name">${ENGINE_LABELS[name]||name}</div>
+      <div class="engine-name" title="${ENGINE_LABELS[name]||name}">${(ENGINE_LABELS[name]||name).slice(0,14)}</div>
       <div class="engine-sig-badge ${cls2}">${sig2}</div>
       <div class="engine-bar-track"><div class="engine-bar-fill ${cls2}" style="width:${barW}%"></div></div>
       <div class="engine-detail" title="${bd.detail||""}">${det}</div>
