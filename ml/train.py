@@ -1,4 +1,4 @@
-# QP-38544345-675 2026-05-09 03:14:00
+# QP-d4aedd3a-3a6 2026-05-09 03:21:38
 """
 ml/train.py — v5: Four targeted improvements toward 72-74% CV ceiling.
 
@@ -349,7 +349,7 @@ def build_features(df, ticker_code, sector_code, nifty_close, nifty_ma200,
     # With path-aware, it's correctly labelled HIT.
     # This better reflects real trading where you can exit at any point.
     daily_vol_20  = close.pct_change().rolling(20).std()
-    vol_threshold = (daily_vol_20 * np.sqrt(RETURN_DAYS) * 0.5).clip(0.003, 0.025)
+    vol_threshold = (daily_vol_20 * np.sqrt(RETURN_DAYS) * 0.7).clip(0.005, 0.030)
 
     # Max return achievable within next RETURN_DAYS days
     future_max   = pd.Series(index=cl_idx, dtype=float)
@@ -391,41 +391,15 @@ def make_xgb(scale_pos_weight=1.0):
         random_state=42,
     )
 
-class CalibratedModel:
-    """
-    Manual isotonic calibration wrapper — works on all sklearn versions.
-    Maps raw XGBoost probabilities to true calibrated probabilities
-    using isotonic regression on the training data.
-    """
-    def __init__(self, base_model, calibrator):
-        self.base_model  = base_model
-        self.calibrator  = calibrator   # IsotonicRegression instance
-
-    def predict_proba(self, X):
-        raw = self.base_model.predict_proba(X)[:, 1]
-        cal = self.calibrator.predict(np.clip(raw, 0, 1))
-        cal = np.clip(cal, 0, 1)
-        return np.column_stack([1 - cal, cal])
-
-    def predict(self, X):
-        return (self.predict_proba(X)[:, 1] >= 0.5).astype(int)
-
-    def get_booster(self):
-        return self.base_model.get_booster()
-
-    def get_params(self, deep=True):
-        return self.base_model.get_params(deep=deep)
-
-    def __getattr__(self, name):
-        # Delegate unknown attributes to base model
-        return getattr(self.base_model, name)
+# Import from shared module so server/app.py can load pickled models
+from ml.calibration import CalibratedModel
 
 
 def calibrate_model(model, X, y):
     """
     IMPROVEMENT 3: Isotonic calibration — sklearn version agnostic.
-    Uses IsotonicRegression directly to map raw XGBoost scores to
-    true probabilities. 68% confidence = 68% historical win rate.
+    Uses IsotonicRegression so raw XGBoost scores → true probabilities.
+    CalibratedModel is in ml/calibration.py so joblib.load works everywhere.
     """
     from sklearn.isotonic import IsotonicRegression
     raw_probs = model.predict_proba(X)[:, 1]
