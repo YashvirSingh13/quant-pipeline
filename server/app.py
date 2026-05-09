@@ -1,4 +1,4 @@
-# QP-59dcb404-4f5 2026-05-09 07:24:39
+# QP-9430d8ce-811 2026-05-09 07:29:11
 # QuantPipeline server QP-c04c8d65-e1d generated 2026-05-09 02:37:35
 """
 server/app.py — Upgraded FastAPI backend v4.
@@ -683,6 +683,25 @@ def _reload_artefacts():
                 except Exception:
                     pass
         print(f"✅ {loaded} per-stock models loaded")
+
+def _run_training():
+    """Run train.py as a subprocess then reload all models into memory."""
+    import subprocess
+    global _retraining
+    _retraining = True
+    try:
+        result = subprocess.run(
+            ["python3", "/app/ml/train.py"],
+            capture_output=False,
+            timeout=1800,   # 30 min max
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"train.py exited with code {result.returncode}")
+        _reload_artefacts()
+        print("✅ Training + model reload complete")
+    finally:
+        _retraining = False
+
 
 def _do_auto_retrain():
     global _learning, _retrain_timer
