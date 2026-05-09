@@ -1218,8 +1218,8 @@ def predict_live(ticker: str):
         [xgb_for_fusion, mr_res, mtf_res, sen_res, fun_res,
          sec_res, ll_res, secr_res, eps_for_fusion],
         vix_multiplier=vix_multiplier,
-        regime=current_regime,
-        hmm_vector=hmm_res.get("vector", {}),
+        hmm_regime_result=hmm_res,
+        current_regime=current_regime,
     )
     consensus["vix_engine"] = vix_res
     consensus["hmm_regime"] = hmm_res
