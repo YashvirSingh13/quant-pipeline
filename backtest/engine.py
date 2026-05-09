@@ -1,3 +1,4 @@
+# QP-2304b663-33c 2026-05-09 03:07:42
 """
 backtest/engine.py — Historical backtesting engine.
 
@@ -212,6 +213,30 @@ def _build_features(df, nifty_close, nifty_ma200, nifty_return, ticker_code,
     f["Ticker"] = ticker_code
     f["Sector"] = sector_code
 
+    # ── Phase 7: NSE proxies (neutral — no historical option chain data) ──────
+    # Match training defaults exactly so model sees consistent values
+    f["PCR"]          = 1.0   # neutral options sentiment
+    f["PCR_Signal"]   = 0.0   # z-score neutral
+    f["FII_Net_Norm"] = (f["FII_Proxy"].clip(-1, 1) if "FII_Proxy" in f.columns
+                         else 0.0)
+    f["DII_Net_Norm"] = 0.0
+    f["Breadth_Pct"]  = (f["Market_Regime"] * 40 + 50).clip(10, 90)
+    f["AdvDec_Ratio"] = 50.0
+
+    # ── Phase 8: Lag features ────────────────────────────────────────────────
+    f["RSI_lag1"]       = f["RSI"].shift(1)
+    f["RSI_lag3"]       = f["RSI"].shift(3)
+    f["MACD_Hist_lag1"] = f["MACD_Hist"].shift(1)
+    f["Return_lag2"]    = close.pct_change().shift(2)
+    f["Vol_Spike_lag1"] = f["Volume_Spike"].shift(1)
+    f["Max_Pain_Dist"]  = 0.0  # no historical max pain data
+
+    # ── Phase 9: Fundamental proxies (neutral during backtest) ───────────────
+    f["EPS_Surprise"]    = 0.0
+    f["Promoter_Change"] = 0.0
+    f["Sector_Momentum"] = 0.5
+    f["Sector_Rel_Perf"] = f["Rel_Strength"].rolling(5).mean().fillna(0)
+
     f.dropna(subset=["RSI","MA50","MACD"], inplace=True)
     return f
 
@@ -282,10 +307,23 @@ def run_backtest(ticker, model, label_encoder, metadata, sector_map, period="3y"
     # Strip column name spaces (legacy pandas MultiIndex quirk)
     feat_df.columns = [str(col).strip() for col in feat_df.columns]
 
-    # Get booster's expected feature list (source of truth)
+    # Get booster's expected feature list
+    # Handles both raw XGBoost and CalibratedClassifierCV wrapper
+    booster_feats = None
     try:
+        # Direct XGBoost
         booster_feats = [f.strip() for f in model.get_booster().feature_names]
     except Exception:
+        pass
+    if not booster_feats:
+        try:
+            # Calibrated model wrapper (sklearn CalibratedClassifierCV)
+            base = model.calibrated_classifiers_[0].estimator
+            booster_feats = [f.strip() for f in base.get_booster().feature_names]
+        except Exception:
+            pass
+    if not booster_feats:
+        # Final fallback: use metadata feature list
         g_feats = [f.strip() for f in (metadata.get("global_features") or [])]
         s_feats = [f.strip() for f in (metadata.get("stock_features")  or [])]
         booster_feats = g_feats or s_feats or list(feat_df.columns)
@@ -309,8 +347,13 @@ def run_backtest(ticker, model, label_encoder, metadata, sector_map, period="3y"
     if missing:
         print(f"⚠  Backtest: {len(missing)} features filled with 0: {missing[:5]}...")
 
-    # Numpy array → XGBoost skips ALL name and count validation
-    probs = model.predict_proba(feat_arr)[:,1]
+    # Use numpy array for raw XGBoost; DataFrame for calibrated wrapper
+    try:
+        probs = model.predict_proba(feat_arr)[:,1]
+    except Exception:
+        # Calibrated model may need DataFrame with feature names
+        feat_df_ordered = pd.DataFrame(feat_arr, columns=booster_feats)
+        probs = model.predict_proba(feat_df_ordered)[:,1]
 
     buy_thr  = metadata.get("buy_threshold",  0.65)
     sell_thr = metadata.get("sell_threshold", 0.35)
