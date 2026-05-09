@@ -1,4 +1,4 @@
-<!DOCTYPE html><!-- QP-6940a183-cca 2026-05-09 18:15:01 -->
+<!DOCTYPE html><!-- QP-4781b47d-642 2026-05-09 18:22:42 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -508,7 +508,7 @@ select,input,button { font-family:var(--mono);font-size:20px;outline:none; }
 .engine-dot.buy{background:var(--buy);box-shadow:0 0 6px var(--buy)}
 .engine-dot.sell{background:var(--sell);box-shadow:0 0 6px var(--sell)}
 .engine-dot.neutral{background:var(--warn);box-shadow:0 0 4px var(--warn)}
-.engine-name { font-family:var(--mono) !important;font-size:10px !important;font-weight:600 !important;color:var(--text) !important;width:155px !important;min-width:155px !important;max-width:155px !important;flex-shrink:0 !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;padding-right:6px !important; }
+.engine-name { font-family:var(--display);font-size:12px;font-weight:600;letter-spacing:0;color:var(--text);width:200px;min-width:200px;flex-shrink:0;line-height:1.4;padding-right:12px; }
 .engine-sig-badge { font-family:var(--display);font-size:14px;font-weight:700;letter-spacing:1px;width:70px;flex-shrink:0; }
 .engine-sig-badge.buy{color:var(--buy)} .engine-sig-badge.sell{color:var(--sell)} .engine-sig-badge.neutral{color:var(--warn)}
 .engine-bar-track { flex:1;height:4px;background:rgba(255,255,255,.06);border-radius:99px;overflow:hidden; }
@@ -2014,15 +2014,21 @@ loadMeta();
 </script>
 
 <style>
-/* iPad Safari engine name override — monospace = predictable width */
+/* Engine name column — wide enough for longest key (15 chars) */
 .engine-name {
-  font-family: 'Courier New', Courier, monospace !important;
-  font-size: 10px !important;
-  width: 155px !important;
-  max-width: 155px !important;
+  width: 200px !important;
+  min-width: 200px !important;
+  flex-shrink: 0 !important;
+  font-size: 12px !important;
+  letter-spacing: 0 !important;
+  padding-right: 12px !important;
   white-space: nowrap !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
+}
+.engine-row {
+  gap: 8px !important;
+  padding: 11px 16px !important;
 }
 </style>
 </body>
