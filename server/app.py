@@ -96,6 +96,70 @@ SECTOR_MAP = {
     "PIDILITIND.NS":9, "DMART.NS":9,      "NYKAA.NS":9,     "ZOMATO.NS":9,
 }
 
+
+# ── Sector peer groups (for sector correlation engine) ───────────────────────
+SECTOR_PEERS = {
+    # Banking
+    "HDFCBANK.NS":   ["ICICIBANK.NS","SBIN.NS","AXISBANK.NS","KOTAKBANK.NS"],
+    "ICICIBANK.NS":  ["HDFCBANK.NS","SBIN.NS","AXISBANK.NS","KOTAKBANK.NS"],
+    "SBIN.NS":       ["HDFCBANK.NS","ICICIBANK.NS","AXISBANK.NS","BANDHANBNK.NS"],
+    "AXISBANK.NS":   ["HDFCBANK.NS","ICICIBANK.NS","SBIN.NS","KOTAKBANK.NS"],
+    "KOTAKBANK.NS":  ["HDFCBANK.NS","ICICIBANK.NS","AXISBANK.NS"],
+    "INDUSINDBK.NS": ["AXISBANK.NS","KOTAKBANK.NS","FEDERALBNK.NS"],
+    # Finance
+    "BAJFINANCE.NS": ["BAJAJFINSV.NS","SBILIFE.NS","HDFCLIFE.NS"],
+    "BAJAJFINSV.NS": ["BAJFINANCE.NS","SBILIFE.NS"],
+    "SBILIFE.NS":    ["HDFCLIFE.NS","BAJFINANCE.NS"],
+    "HDFCLIFE.NS":   ["SBILIFE.NS","BAJFINANCE.NS"],
+    # IT
+    "TCS.NS":        ["INFY.NS","WIPRO.NS","HCLTECH.NS","TECHM.NS"],
+    "INFY.NS":       ["TCS.NS","WIPRO.NS","HCLTECH.NS","TECHM.NS"],
+    "WIPRO.NS":      ["TCS.NS","INFY.NS","HCLTECH.NS"],
+    "HCLTECH.NS":    ["TCS.NS","INFY.NS","WIPRO.NS","TECHM.NS"],
+    "TECHM.NS":      ["INFY.NS","WIPRO.NS","HCLTECH.NS"],
+    "LTIM.NS":       ["TCS.NS","INFY.NS","WIPRO.NS"],
+    # Auto
+    "TATAMOTORS.NS": ["MARUTI.NS","BAJAJ-AUTO.NS","HEROMOTOCO.NS","M&M.NS"],
+    "MARUTI.NS":     ["TATAMOTORS.NS","M&M.NS","HEROMOTOCO.NS"],
+    "BAJAJ-AUTO.NS": ["HEROMOTOCO.NS","TATAMOTORS.NS","EICHERMOT.NS"],
+    "HEROMOTOCO.NS": ["BAJAJ-AUTO.NS","TATAMOTORS.NS","EICHERMOT.NS"],
+    "M&M.NS":        ["TATAMOTORS.NS","MARUTI.NS"],
+    "EICHERMOT.NS":  ["BAJAJ-AUTO.NS","HEROMOTOCO.NS"],
+    # Energy
+    "RELIANCE.NS":   ["ONGC.NS","BPCL.NS","NTPC.NS"],
+    "ONGC.NS":       ["RELIANCE.NS","BPCL.NS","COALINDIA.NS"],
+    "BPCL.NS":       ["ONGC.NS","RELIANCE.NS","COALINDIA.NS"],
+    "NTPC.NS":       ["POWERGRID.NS","COALINDIA.NS"],
+    "POWERGRID.NS":  ["NTPC.NS","COALINDIA.NS"],
+    "COALINDIA.NS":  ["ONGC.NS","NTPC.NS","POWERGRID.NS"],
+    # FMCG
+    "HINDUNILVR.NS": ["ITC.NS","BRITANNIA.NS","NESTLEIND.NS","TATACONSUM.NS"],
+    "ITC.NS":        ["HINDUNILVR.NS","BRITANNIA.NS","TATACONSUM.NS"],
+    "BRITANNIA.NS":  ["HINDUNILVR.NS","ITC.NS","NESTLEIND.NS"],
+    "NESTLEIND.NS":  ["HINDUNILVR.NS","BRITANNIA.NS","TATACONSUM.NS"],
+    "TATACONSUM.NS": ["ITC.NS","HINDUNILVR.NS","NESTLEIND.NS"],
+    # Pharma
+    "SUNPHARMA.NS":  ["DRREDDY.NS","CIPLA.NS","DIVISLAB.NS","APOLLOHOSP.NS"],
+    "DRREDDY.NS":    ["SUNPHARMA.NS","CIPLA.NS","DIVISLAB.NS"],
+    "CIPLA.NS":      ["SUNPHARMA.NS","DRREDDY.NS","DIVISLAB.NS"],
+    "DIVISLAB.NS":   ["SUNPHARMA.NS","CIPLA.NS","DRREDDY.NS"],
+    "APOLLOHOSP.NS": ["SUNPHARMA.NS","CIPLA.NS"],
+    # Metals
+    "TATASTEEL.NS":  ["JSWSTEEL.NS","HINDALCO.NS"],
+    "JSWSTEEL.NS":   ["TATASTEEL.NS","HINDALCO.NS"],
+    "HINDALCO.NS":   ["TATASTEEL.NS","JSWSTEEL.NS"],
+    # Infra / Cement
+    "LT.NS":         ["ADANIPORTS.NS","ULTRACEMCO.NS","GRASIM.NS"],
+    "ADANIPORTS.NS": ["LT.NS","ULTRACEMCO.NS"],
+    "ULTRACEMCO.NS": ["GRASIM.NS","LT.NS","ADANIPORTS.NS"],
+    "GRASIM.NS":     ["ULTRACEMCO.NS","LT.NS"],
+    # Other
+    "ASIANPAINT.NS": ["TITAN.NS","TRENT.NS"],
+    "TITAN.NS":      ["ASIANPAINT.NS","TRENT.NS"],
+    "TRENT.NS":      ["TITAN.NS","ASIANPAINT.NS"],
+    "BHARTIARTL.NS": ["RELIANCE.NS"],
+}
+
 # ── Sector benchmarks (approximate NSE averages) ────────────────────────────────
 # Used to contextualise individual stock PE/PB vs sector
 SECTOR_BENCHMARKS = {
@@ -1088,7 +1152,8 @@ def predict_live(ticker: str):
         fut_vix  = ex.submit(_safe, volatility_regime.run)
         fut_fun  = ex.submit(_safe, fundamental_rank.run, ticker, SECTOR_MAP, SECTOR_BENCHMARKS)
         fut_hmm  = ex.submit(_safe, hmm_regime.run, ticker, df)
-        fut_sec  = ex.submit(_safe, sector_correlation.run, ticker, SECTOR_PEERS, df)
+        peers    = SECTOR_PEERS.get(ticker, [])
+        fut_sec  = ex.submit(_safe, sector_correlation.run, ticker, peers, df)
         fut_ll   = ex.submit(_safe, leader_lagger.run, ticker)
         fut_nse  = ex.submit(_safe, nse_data.fetch_all)
         fut_secr = ex.submit(_safe, sector_rotation.run, ticker, SECTOR_MAP.get(ticker, 7))
