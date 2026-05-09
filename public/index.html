@@ -1,4 +1,4 @@
-<!DOCTYPE html><!-- QP-1816a3d1-9b1 2026-05-09 16:07:24 -->
+<!DOCTYPE html><!-- QP-d3a7f777-a55 2026-05-09 17:09:20 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -1239,14 +1239,16 @@ function renderConsensus(consensus,engines){
   const bdMap={};
   (consensus.engine_breakdown||[]).forEach(b=>bdMap[b.engine]=b);
   document.getElementById("engine-rows").innerHTML=ENGINE_ORDER.map(name=>{
-    const bd=bdMap[name]||{}; const res=(name==="xgboost")?bd:(engines?.[name]||bd);
+    const bd=bdMap[name]||{};
+    const dn=bd.display_name||ENGINE_LABELS[name]||name;
+    const res=(name==="xgboost")?bd:(engines?.[name]||bd);
     const sig2=(bd.signal||res?.signal||"NEUTRAL"); const sc=bd.fusion_score!=null?bd.fusion_score:(bd.score||0.5);
     const w=bd.weight!=null?(bd.weight*100).toFixed(0)+"%":"—";
     const barW=Math.round(Math.abs(sc-0.5)*200); const det=(bd.detail||res?.detail||"").slice(0,50);
     const cls2=sig2.toLowerCase();
     return `<div class="engine-row">
       <div class="engine-dot ${cls2}"></div>
-      <div class="engine-name" title="${ENGINE_LABELS[name]||name}">${(ENGINE_LABELS[name]||name).slice(0,14)}</div>
+      <div class="engine-name" title="${bd.display_name||ENGINE_LABELS[name]||name}">${(bd.display_name||ENGINE_LABELS[name]||name).slice(0,12)}</div>
       <div class="engine-sig-badge ${cls2}">${sig2}</div>
       <div class="engine-bar-track"><div class="engine-bar-fill ${cls2}" style="width:${barW}%"></div></div>
       <div class="engine-detail" title="${bd.detail||""}">${det}</div>
