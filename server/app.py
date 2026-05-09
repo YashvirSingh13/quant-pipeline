@@ -1,4 +1,4 @@
-# QP-0679ff7b-c84 2026-05-09 17:40:36
+# QP-a1aec85a-31a 2026-05-09 17:45:28
 # QuantPipeline server QP-c04c8d65-e1d generated 2026-05-09 02:37:35
 """
 server/app.py — Upgraded FastAPI backend v4.
@@ -970,11 +970,13 @@ def _live_features(ticker: str, df=None) -> dict:
         "_last_price":    float(close.iloc[-1]),
         "_as_of":         str(df.index[-1].date()),
     }
-    # Delivery_Pct_Proxy — computed AFTER feats dict is built (not inside it)
-    _vs  = feats.get("Volume_Spike", 1.0)
-    _atr = abs(feats.get("ATR", 1.0))
-    _px  = max(1.0, feats.get("_last_price", 100.0))
-    feats["Delivery_Pct_Proxy"] = float(np.clip(_vs / max(0.01, 1 + _atr / _px * 10), 0, 2))
+    # Delivery_Pct_Proxy — computed AFTER feats dict is built
+    # Note: local vars named _del_* to avoid shadowing helper functions
+    _del_vs  = feats.get("Volume_Spike", 1.0)
+    _del_atr = abs(feats.get("ATR", 1.0))
+    _del_px  = max(1.0, feats.get("_last_price", 100.0))
+    feats["Delivery_Pct_Proxy"] = float(np.clip(
+        _del_vs / max(0.01, 1 + _del_atr / _del_px * 10), 0, 2))
     return feats
 
 # ── Prediction logic ─────────────────────────────────────────────────────────────
