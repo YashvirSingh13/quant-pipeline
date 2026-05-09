@@ -1,4 +1,4 @@
-# QP-2304b663-33c 2026-05-09 03:07:42
+# QP-38544345-675 2026-05-09 03:14:00
 """
 backtest/engine.py — Historical backtesting engine.
 
@@ -317,9 +317,8 @@ def run_backtest(ticker, model, label_encoder, metadata, sector_map, period="3y"
         pass
     if not booster_feats:
         try:
-            # Calibrated model wrapper (sklearn CalibratedClassifierCV)
-            base = model.calibrated_classifiers_[0].estimator
-            booster_feats = [f.strip() for f in base.get_booster().feature_names]
+            # Our CalibratedModel wrapper — delegates get_booster() to base
+            booster_feats = [f.strip() for f in model.get_booster().feature_names]
         except Exception:
             pass
     if not booster_feats:
