@@ -1,4 +1,4 @@
-# QP-7ed43cf8-6aa 2026-05-09 02:39:46
+# QP-90c73633-e32 2026-05-09 03:00:39
 # QuantPipeline server QP-c04c8d65-e1d generated 2026-05-09 02:37:35
 """
 server/app.py — Upgraded FastAPI backend v4.
@@ -43,6 +43,9 @@ os.makedirs(MODELS_DIR, exist_ok=True)
 
 STOCKS_FILE = os.path.join(DATA_DIR, "known_stocks.json")
 MODEL_PATH  = os.path.join(DATA_DIR, "model.pkl")
+MODEL_BULL     = os.path.join(DATA_DIR, "model_bull.pkl")
+MODEL_NORMAL   = os.path.join(DATA_DIR, "model_normal.pkl")
+MODEL_VOLATILE = os.path.join(DATA_DIR, "model_volatile.pkl")
 LE_PATH     = os.path.join(DATA_DIR, "label_encoder.pkl")
 META_PATH   = os.path.join(DATA_DIR, "model_metadata.json")
 PUBLIC_DIR  = os.path.join(ROOT_DIR,  "public")
@@ -597,38 +600,30 @@ def _stock_model_path(ticker: str) -> str:
     safe = ticker.replace(".", "_").replace("^", "")
     return os.path.join(MODELS_DIR, f"{safe}.pkl")
 
-def _get_model_for_ticker(ticker: str):
-    """Return (model, feature_list, model_type) for a ticker."""
-    # Try cached per-stock model
+def _get_model_for_ticker(ticker: str, vix_level: float = None):
+    """Return (model, feature_list, model_type). Regime-aware selection."""
+    # Per-stock model first
     if ticker in _stock_models:
         return _stock_models[ticker], STOCK_FEATURES, "per-stock"
-    # Try loading from disk
     path = _stock_model_path(ticker)
     if os.path.exists(path):
         m = joblib.load(path)
         _stock_models[ticker] = m
         return m, STOCK_FEATURES, "per-stock"
-    # Fall back to global
-    if _global_model is not None:
-        return _global_model, GLOBAL_FEATURES, "global"
-    raise RuntimeError("No model available. Training may still be in progress.")
 
-# ── Helpers: artefact loading ───────────────────────────────────────────────────
-def _strip_model_feature_names(model):
-    """
-    Strip whitespace from XGBoost booster feature names — fixes legacy models.
+    # Regime model based on VIX
+    if vix_level is not None:
+        if vix_level < 15 and os.path.exists(MODEL_BULL):
+            return joblib.load(MODEL_BULL), GLOBAL_FEATURES, "regime-bull"
+        elif vix_level >= 22 and os.path.exists(MODEL_VOLATILE):
+            return joblib.load(MODEL_VOLATILE), GLOBAL_FEATURES, "regime-volatile"
+        elif os.path.exists(MODEL_NORMAL):
+            return joblib.load(MODEL_NORMAL), GLOBAL_FEATURES, "regime-normal"
 
-    Note: feature_names_in_ is read-only in newer sklearn/XGBoost versions,
-    so we only strip the booster's internal list. Since _run_predict always
-    passes numpy arrays (.values), XGBoost skips name validation entirely —
-    this strip is just a belt-and-suspenders cleanup for logging clarity.
-    """
-    try:
-        booster = model.get_booster()
-        if booster.feature_names:
-            booster.feature_names = [f.strip() for f in booster.feature_names]
-    except Exception as e:
-        print(f"⚠  Could not strip booster feature names: {e}")
+    # Global fallback
+    if _global_model is None:
+        raise RuntimeError("Model not loaded — training in progress")
+    return _global_model, GLOBAL_FEATURES, "global"
 
 def _reload_artefacts():
     global _global_model, _label_encoder, _metadata, _stock_models
@@ -932,7 +927,9 @@ def _live_features(ticker: str, df=None) -> dict:
 
 # ── Prediction logic ─────────────────────────────────────────────────────────────
 def _run_predict(ticker: str, feats: dict) -> dict:
-    model, feature_list, model_type = _get_model_for_ticker(ticker)
+    vix = feats.get("VIX_US_Level") or feats.get("VIX_IN_Pct")
+    vix_level = float(vix) if vix is not None else None
+    model, feature_list, model_type = _get_model_for_ticker(ticker, vix_level)
     # Use booster's own feature names (strips trailing spaces from legacy models)
     try:
         feature_list = [f.strip() for f in model.get_booster().feature_names]
