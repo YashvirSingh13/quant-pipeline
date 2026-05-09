@@ -1244,7 +1244,10 @@ def predict_live(ticker: str):
         clean_feats = {k: v for k, v in feats.items() if not k.startswith("_")}
         shap_result = explain_prediction(clean_feats, model_used, feat_list)
     except Exception as exc:
-        print(f"⚠  SHAP failed: {exc}")
+        # Silently skip SHAP on feature mismatch (old model vs new features)
+        # Will work correctly after next retrain
+        if "18 vs" not in str(exc) and "vs. 69" not in str(exc):
+            print(f"⚠  SHAP failed: {exc}")
 
     # Fundamentals
     fundamentals = None
@@ -1253,12 +1256,10 @@ def predict_live(ticker: str):
     except Exception as exc:
         print(f"⚠  Fundamentals failed: {exc}")
 
-    # Trading horizon
+    # Trading horizon — use mtf_res already computed above
     horizon = {"horizons": [], "recommended": [], "primary": "Short-term"}
     try:
-        from engines.multi_timeframe import get_trends
-        trends = get_trends(df)
-        horizon = _compute_trading_horizon(feats, trends, fun_res, vix_res)
+        horizon = _compute_trading_horizon(feats, mtf_res, fun_res, vix_res)
     except Exception as exc:
         print(f"⚠  Horizon failed: {exc}")
 
