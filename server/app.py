@@ -1,4 +1,4 @@
-# QP-fb6b2fe4-a42 2026-05-10 06:29:54
+# QP-38618783-51b 2026-05-10 06:39:22
 # QuantPipeline server QP-c04c8d65-e1d generated 2026-05-09 02:37:35
 """
 server/app.py — Upgraded FastAPI backend v4.
@@ -1012,24 +1012,30 @@ def _live_features(ticker: str, df=None) -> dict:
         feats["Gap_Open_Pct"] = float(np.clip(
             (_curr_open - _prev_close) / max(_prev_close, 0.01), -0.10, 0.10))
 
-        # Days since 52W high/low (counted backwards from today)
-        _last252 = _close_series.tail(252) if len(_close_series) >= 252 else _close_series
-        _hi_idx  = _last252.values.argmax()
-        _lo_idx  = _last252.values.argmin()
-        feats["Days_Since_52W_High"] = float((len(_last252) - 1 - _hi_idx) / 252.0)
-        feats["Days_Since_52W_Low"]  = float((len(_last252) - 1 - _lo_idx) / 252.0)
+        # Days since 52W high/low (vectorized, safe)
+        _vals = _close_series.tail(252).values if len(_close_series) >= 252 else _close_series.values
+        if len(_vals) > 0:
+            _hi_idx = int(np.argmax(_vals))
+            _lo_idx = int(np.argmin(_vals))
+            feats["Days_Since_52W_High"] = float((len(_vals) - 1 - _hi_idx) / 252.0)
+            feats["Days_Since_52W_Low"]  = float((len(_vals) - 1 - _lo_idx) / 252.0)
+        else:
+            feats["Days_Since_52W_High"] = 0.5
+            feats["Days_Since_52W_Low"]  = 0.5
 
-        # Streaks — count consecutive up/down days ending today
-        _diffs = _close_series.diff().tail(15).values
+        # Streaks — count consecutive up/down days ending today (vectorized)
+        _diffs = _close_series.diff().tail(15).fillna(0)
         _up_streak = 0; _dn_streak = 0
-        for v in reversed(_diffs):
-            if np.isnan(v): break
+        # Walk backwards from most recent. Stop on first sign change.
+        _vals = _diffs.values
+        for i in range(len(_vals) - 1, -1, -1):
+            v = float(_vals[i])
             if v > 0:
-                _up_streak += 1
                 if _dn_streak > 0: break
+                _up_streak += 1
             elif v < 0:
-                _dn_streak += 1
                 if _up_streak > 0: break
+                _dn_streak += 1
             else:
                 break
         feats["Consecutive_Up_Days"]   = float(min(_up_streak, 10) / 10.0)
