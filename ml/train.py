@@ -1,4 +1,4 @@
-# QP-fb6b2fe4-a42 2026-05-10 06:29:54
+# QP-38618783-51b 2026-05-10 06:39:22
 # ── train.py v6 — 5 accuracy improvements ────────────────────────────────────
 """
 Changes from v5:
@@ -378,36 +378,29 @@ def build_features(df, ticker_code, sector_code, nifty_close, nifty_ma200,
     # Overnight gap — captures pre-market sentiment from global cues
     df["Gap_Open_Pct"] = ((open_p - prev_close) / prev_close.replace(0, np.nan)).fillna(0).clip(-0.10, 0.10)
 
-    # Trend exhaustion — far from 52W extremes is mean-reversion territory
+    # ── VECTORIZED: Trend exhaustion (Days since 52W high/low) ──────────
+    # Using cumsum trick instead of iloc loop (50x faster, no memory issues)
     h52_dates = (close == close.rolling(252).max()).astype(int)
     l52_dates = (close == close.rolling(252).min()).astype(int)
-    days_high = pd.Series(0, index=close.index, dtype=float)
-    days_low  = pd.Series(0, index=close.index, dtype=float)
-    counter_h = 0; counter_l = 0
-    for i in range(len(close)):
-        counter_h = 0 if h52_dates.iloc[i] == 1 else counter_h + 1
-        counter_l = 0 if l52_dates.iloc[i] == 1 else counter_l + 1
-        days_high.iloc[i] = min(counter_h, 252)
-        days_low.iloc[i]  = min(counter_l, 252)
+    # Each "1" in mask resets the counter — group by cumsum gives streak ID
+    h_groups = h52_dates.cumsum()
+    l_groups = l52_dates.cumsum()
+    days_high = h52_dates.groupby(h_groups).cumcount().clip(upper=252)
+    days_low  = l52_dates.groupby(l_groups).cumcount().clip(upper=252)
     df["Days_Since_52W_High"] = days_high / 252.0
-    df["Days_Since_52W_Low"]  = days_low / 252.0
+    df["Days_Since_52W_Low"]  = days_low  / 252.0
 
-    # Streak indicators — momentum vs capitulation
+    # ── VECTORIZED: Consecutive up/down streaks ─────────────────────────
     daily_change = close.diff()
-    up_streak = pd.Series(0, index=close.index, dtype=float)
-    dn_streak = pd.Series(0, index=close.index, dtype=float)
-    u = 0; d = 0
-    for i in range(len(close)):
-        if pd.isna(daily_change.iloc[i]):
-            u = 0; d = 0
-        elif daily_change.iloc[i] > 0:
-            u += 1; d = 0
-        elif daily_change.iloc[i] < 0:
-            d += 1; u = 0
-        up_streak.iloc[i] = min(u, 10) / 10.0
-        dn_streak.iloc[i] = min(d, 10) / 10.0
-    df["Consecutive_Up_Days"]   = up_streak
-    df["Consecutive_Down_Days"] = dn_streak
+    up   = (daily_change > 0).astype(int)
+    down = (daily_change < 0).astype(int)
+    # Run-length encoding: increments while True, resets on False
+    up_grp   = (up   != up.shift()).cumsum()
+    down_grp = (down != down.shift()).cumsum()
+    up_streak   = up.groupby(up_grp).cumsum()      * up
+    down_streak = down.groupby(down_grp).cumsum()  * down
+    df["Consecutive_Up_Days"]   = (up_streak.clip(upper=10)   / 10.0).fillna(0)
+    df["Consecutive_Down_Days"] = (down_streak.clip(upper=10) / 10.0).fillna(0)
 
     # 5-day range position — overbought/oversold within recent window
     high_5d = close.rolling(5).max()
