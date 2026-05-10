@@ -1,4 +1,4 @@
-# QP-ed7387d8-c56 2026-05-10 00:11:34
+# QP-fb6b2fe4-a42 2026-05-10 06:29:54
 # QuantPipeline server QP-c04c8d65-e1d generated 2026-05-09 02:37:35
 """
 server/app.py — Upgraded FastAPI backend v4.
@@ -518,6 +518,13 @@ STOCK_FEATURES = [
     "Max_Pain_Dist",
     "EPS_Surprise", "Promoter_Change", "Sector_Momentum", "Sector_Rel_Perf",
     "Delivery_Pct_Proxy",
+    # Path 2: technical features from OHLCV
+    "Gap_Open_Pct",
+    "Days_Since_52W_High",
+    "Days_Since_52W_Low",
+    "Consecutive_Up_Days",
+    "Consecutive_Down_Days",
+    "Range_Position_5d",
 ]
 GLOBAL_FEATURES = STOCK_FEATURES + ["Ticker", "Sector"]
 
@@ -987,12 +994,64 @@ def _live_features(ticker: str, df=None) -> dict:
         "_as_of":         str(df.index[-1].date()),
     }
     # Delivery_Pct_Proxy — computed AFTER feats dict is built
-    # Note: local vars named _del_* to avoid shadowing helper functions
     _del_vs  = feats.get("Volume_Spike", 1.0)
     _del_atr = abs(feats.get("ATR", 1.0))
     _del_px  = max(1.0, feats.get("_last_price", 100.0))
     feats["Delivery_Pct_Proxy"] = float(np.clip(
         _del_vs / max(0.01, 1 + _del_atr / _del_px * 10), 0, 2))
+
+    # ── Path 2: 6 new technical features from OHLCV ──────────────────────────
+    try:
+        _close_series = df["Close"].squeeze()
+        _open_series  = df["Open"].squeeze() if "Open" in df.columns else _close_series
+        _curr_close   = float(_close_series.iloc[-1])
+        _curr_open    = float(_open_series.iloc[-1])
+        _prev_close   = float(_close_series.iloc[-2]) if len(_close_series) >= 2 else _curr_close
+
+        # Overnight gap
+        feats["Gap_Open_Pct"] = float(np.clip(
+            (_curr_open - _prev_close) / max(_prev_close, 0.01), -0.10, 0.10))
+
+        # Days since 52W high/low (counted backwards from today)
+        _last252 = _close_series.tail(252) if len(_close_series) >= 252 else _close_series
+        _hi_idx  = _last252.values.argmax()
+        _lo_idx  = _last252.values.argmin()
+        feats["Days_Since_52W_High"] = float((len(_last252) - 1 - _hi_idx) / 252.0)
+        feats["Days_Since_52W_Low"]  = float((len(_last252) - 1 - _lo_idx) / 252.0)
+
+        # Streaks — count consecutive up/down days ending today
+        _diffs = _close_series.diff().tail(15).values
+        _up_streak = 0; _dn_streak = 0
+        for v in reversed(_diffs):
+            if np.isnan(v): break
+            if v > 0:
+                _up_streak += 1
+                if _dn_streak > 0: break
+            elif v < 0:
+                _dn_streak += 1
+                if _up_streak > 0: break
+            else:
+                break
+        feats["Consecutive_Up_Days"]   = float(min(_up_streak, 10) / 10.0)
+        feats["Consecutive_Down_Days"] = float(min(_dn_streak, 10) / 10.0)
+
+        # 5-day range position
+        _last5 = _close_series.tail(5)
+        if len(_last5) >= 2:
+            _hi5 = float(_last5.max()); _lo5 = float(_last5.min())
+            _range5 = max(_hi5 - _lo5, 0.01)
+            feats["Range_Position_5d"] = float(np.clip((_curr_close - _lo5) / _range5, 0, 1))
+        else:
+            feats["Range_Position_5d"] = 0.5
+    except Exception as _e:
+        # Safe fallbacks if any computation fails
+        feats["Gap_Open_Pct"]           = 0.0
+        feats["Days_Since_52W_High"]    = 0.5
+        feats["Days_Since_52W_Low"]     = 0.5
+        feats["Consecutive_Up_Days"]    = 0.0
+        feats["Consecutive_Down_Days"]  = 0.0
+        feats["Range_Position_5d"]      = 0.5
+
     return feats
 
 # ── Prediction logic ─────────────────────────────────────────────────────────────
