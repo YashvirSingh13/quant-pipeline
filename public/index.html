@@ -1,4 +1,4 @@
-<!DOCTYPE html><!-- QP-97b45f75-ea8 2026-05-10 15:04:51 -->
+<!DOCTYPE html><!-- QP-239901db-443 2026-05-10 16:10:21 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -664,7 +664,7 @@ select,input,button { font-family:var(--mono);font-size:20px;outline:none; }
 }
 </style>
 </head>
-<body><div style="position:fixed;bottom:8px;right:10px;font-size:11px;color:#0ff;z-index:99999;font-family:monospace;background:#000;padding:3px 6px;border:1px solid #0ff;border-radius:3px;font-weight:bold">v.97b45f75 15:04</div>
+<body><div style="position:fixed;bottom:8px;right:10px;font-size:11px;color:#0ff;z-index:99999;font-family:monospace;background:#000;padding:3px 6px;border:1px solid #0ff;border-radius:3px;font-weight:bold">v.239901db 16:10</div>
 <div class="bg-orb bg-orb-1"></div>
 <div class="bg-orb bg-orb-2"></div>
 
@@ -868,36 +868,7 @@ select,input,button { font-family:var(--mono);font-size:20px;outline:none; }
     </div>
   </div>
 
-  <!-- 7b. Prediction History -->
-  <div class="panel" id="pred-panel" style="display:none">
-    <div class="panel-header">◈ Prediction Log
-      <span style="margin-left:auto;font-size:15px;color:var(--dim)" id="pred-accuracy-label"></span>
-      <button class="btn btn-secondary" onclick="loadPredictions()" style="font-size:14px;padding:4px 10px;margin-left:8px">↻ Refresh</button>
-    </div>
-    <div class="pred-summary" id="pred-summary"></div>
-    <div class="pred-scroll">
-      <table class="pred-table">
-        <thead><tr>
-          <th>Date / Time</th><th>Ticker</th><th>Engine</th>
-          <th>Signal</th><th>Score</th><th>Regime</th><th>Outcome</th>
-        </tr></thead>
-        <tbody id="pred-tbody"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- 8. Model Info -->
-  <div class="panel" id="meta-panel" style="display:none">
-    <div class="panel-header">◈ Model Info</div>
-    <div class="panel-body"><div class="info-grid" id="meta-grid"></div></div>
-    <div class="retrain-row">
-      <span>Retrain on latest data</span>
-      <button class="btn btn-secondary" onclick="retrain()" id="btn-retrain">⟳ Retrain</button>
-      <span id="retrain-status"></span>
-    </div>
-  </div>
-
-  <!-- 9. Backtest -->
+  <!-- 8. Historical Backtest -->
   <div class="panel" id="bt-panel" style="display:none">
     <div class="panel-header">◈ Historical Backtest <span id="bt-running" style="display:none;margin-left:8px"><span class="spin"></span></span></div>
     <div class="bt-controls">
@@ -921,6 +892,35 @@ select,input,button { font-family:var(--mono);font-size:20px;outline:none; }
         <div class="bt-trades-label">Recent Trades</div>
         <div id="bt-trade-list"></div>
       </div>
+    </div>
+  </div>
+
+  <!-- 9. Model Info -->
+  <div class="panel" id="meta-panel" style="display:none">
+    <div class="panel-header">◈ Model Info</div>
+    <div class="panel-body"><div class="info-grid" id="meta-grid"></div></div>
+    <div class="retrain-row">
+      <span>Retrain on latest data</span>
+      <button class="btn btn-secondary" onclick="retrain()" id="btn-retrain">⟳ Retrain</button>
+      <span id="retrain-status"></span>
+    </div>
+  </div>
+
+  <!-- 10. Prediction Log -->
+  <div class="panel" id="pred-panel" style="display:none">
+    <div class="panel-header">◈ Prediction Log
+      <span style="margin-left:auto;font-size:15px;color:var(--dim)" id="pred-accuracy-label"></span>
+      <button class="btn btn-secondary" onclick="loadPredictions()" style="font-size:14px;padding:4px 10px;margin-left:8px">↻ Refresh</button>
+    </div>
+    <div class="pred-summary" id="pred-summary"></div>
+    <div class="pred-scroll">
+      <table class="pred-table">
+        <thead><tr>
+          <th>Date / Time</th><th>Ticker</th><th>Engine</th>
+          <th>Signal</th><th>Score</th><th>Regime</th><th>Outcome</th>
+        </tr></thead>
+        <tbody id="pred-tbody"></tbody>
+      </table>
     </div>
   </div>
 
