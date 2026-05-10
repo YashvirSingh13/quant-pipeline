@@ -1,4 +1,4 @@
-# QP-d3a7f777-a55 2026-05-09 17:09:20
+# QP-fb6b2fe4-a42 2026-05-10 06:29:54
 # ── train.py v6 — 5 accuracy improvements ────────────────────────────────────
 """
 Changes from v5:
@@ -140,6 +140,13 @@ STOCK_FEATURES = [
     "Sector_Momentum", "Sector_Rel_Perf",
     # IMPROVEMENT 2: NSE Delivery % proxy
     "Delivery_Pct_Proxy",
+    # Path 2: New technical features (OHLCV-derived)
+    "Gap_Open_Pct",
+    "Days_Since_52W_High",
+    "Days_Since_52W_Low",
+    "Consecutive_Up_Days",
+    "Consecutive_Down_Days",
+    "Range_Position_5d",
 ]
 GLOBAL_FEATURES = STOCK_FEATURES + ["Ticker", "Sector"]
 
@@ -363,6 +370,50 @@ def build_features(df, ticker_code, sector_code, nifty_close, nifty_ma200,
 
     df["Ticker"] = ticker_code
     df["Sector"] = sector_code
+
+    # ── Path 2 features: derived from OHLCV ────────────────────────────────
+    open_p     = df["Open"].squeeze() if "Open" in df.columns else close
+    prev_close = close.shift(1)
+
+    # Overnight gap — captures pre-market sentiment from global cues
+    df["Gap_Open_Pct"] = ((open_p - prev_close) / prev_close.replace(0, np.nan)).fillna(0).clip(-0.10, 0.10)
+
+    # Trend exhaustion — far from 52W extremes is mean-reversion territory
+    h52_dates = (close == close.rolling(252).max()).astype(int)
+    l52_dates = (close == close.rolling(252).min()).astype(int)
+    days_high = pd.Series(0, index=close.index, dtype=float)
+    days_low  = pd.Series(0, index=close.index, dtype=float)
+    counter_h = 0; counter_l = 0
+    for i in range(len(close)):
+        counter_h = 0 if h52_dates.iloc[i] == 1 else counter_h + 1
+        counter_l = 0 if l52_dates.iloc[i] == 1 else counter_l + 1
+        days_high.iloc[i] = min(counter_h, 252)
+        days_low.iloc[i]  = min(counter_l, 252)
+    df["Days_Since_52W_High"] = days_high / 252.0
+    df["Days_Since_52W_Low"]  = days_low / 252.0
+
+    # Streak indicators — momentum vs capitulation
+    daily_change = close.diff()
+    up_streak = pd.Series(0, index=close.index, dtype=float)
+    dn_streak = pd.Series(0, index=close.index, dtype=float)
+    u = 0; d = 0
+    for i in range(len(close)):
+        if pd.isna(daily_change.iloc[i]):
+            u = 0; d = 0
+        elif daily_change.iloc[i] > 0:
+            u += 1; d = 0
+        elif daily_change.iloc[i] < 0:
+            d += 1; u = 0
+        up_streak.iloc[i] = min(u, 10) / 10.0
+        dn_streak.iloc[i] = min(d, 10) / 10.0
+    df["Consecutive_Up_Days"]   = up_streak
+    df["Consecutive_Down_Days"] = dn_streak
+
+    # 5-day range position — overbought/oversold within recent window
+    high_5d = close.rolling(5).max()
+    low_5d  = close.rolling(5).min()
+    range_5d = (high_5d - low_5d).replace(0, np.nan)
+    df["Range_Position_5d"] = ((close - low_5d) / range_5d).fillna(0.5).clip(0, 1)
 
     # Path-aware target
     daily_vol_20  = close.pct_change().rolling(20).std()
