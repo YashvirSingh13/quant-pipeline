@@ -1,4 +1,4 @@
-# QP-6eef4fd9-977 2026-05-10 15:59:36
+# QP-bbd76659-ca8 2026-05-10 16:23:29
 # QuantPipeline server QP-c04c8d65-e1d generated 2026-05-09 02:37:35
 """
 server/app.py — Upgraded FastAPI backend v4.
@@ -1312,17 +1312,30 @@ def server_status():
 
 
 @app.get("/predictions")
-def prediction_history(limit: int = 100):
-    """Return recent prediction history with outcomes for the prediction log panel."""
+def prediction_history(limit: int = 100, engine: str = "fusion"):
+    """Return recent prediction history with outcomes for the prediction log panel.
+
+    Filters to the final fusion signal by default (1 entry per stock query).
+    Per-engine signals are still stored for the dynamic-weight system but not
+    shown in the UI log. Pass ?engine=all to see everything.
+    """
     try:
         from engines.performance_tracker import _load
         data     = _load()
         signals  = data.get("signals", [])
-        # Return most recent first
-        recent   = list(reversed(signals[-limit:]))
-        # Summarise for UI
-        total    = len(signals)
-        resolved = [s for s in signals if s.get("outcome") in ("CORRECT","WRONG")]
+
+        # Filter to fusion-only by default — show 1 final result per stock query
+        if engine and engine != "all":
+            filtered = [sig for sig in signals if sig.get("engine") == engine]
+        else:
+            filtered = signals
+
+        # Return most recent first, capped at `limit`
+        recent   = list(reversed(filtered[-limit:]))
+
+        # Summary stats based on the FILTERED set (so accuracy = fusion accuracy)
+        total    = len(filtered)
+        resolved = [s for s in filtered if s.get("outcome") in ("CORRECT","WRONG")]
         correct  = sum(1 for s in resolved if s["outcome"]=="CORRECT")
         accuracy = round(correct/len(resolved)*100,1) if resolved else None
         return {
