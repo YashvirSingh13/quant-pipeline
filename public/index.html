@@ -1,4 +1,4 @@
-<!DOCTYPE html><!-- QP-721ba08b-098 2026-05-10 06:05:51 -->
+<!DOCTYPE html><!-- QP-6f7fabd0-ef6 2026-05-10 06:13:00 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -664,7 +664,7 @@ select,input,button { font-family:var(--mono);font-size:20px;outline:none; }
 }
 </style>
 </head>
-<body><div style="position:fixed;bottom:8px;right:10px;font-size:11px;color:#0ff;z-index:99999;font-family:monospace;background:#000;padding:3px 6px;border:1px solid #0ff;border-radius:3px;font-weight:bold">v.721ba08b 06:05</div>
+<body><div style="position:fixed;bottom:8px;right:10px;font-size:11px;color:#0ff;z-index:99999;font-family:monospace;background:#000;padding:3px 6px;border:1px solid #0ff;border-radius:3px;font-weight:bold">v.6f7fabd0 06:13</div>
 <div class="bg-orb bg-orb-1"></div>
 <div class="bg-orb bg-orb-2"></div>
 
@@ -1128,35 +1128,8 @@ function renderTradeCard(tl) {
     : `<div class="trade-cell-value na">—</div>
        <div class="trade-cell-sub">No target set</div>`;
 
-  const engRows = (tl.engine_recs || []).map(e => {
-    const ec = (e.signal||"NEUTRAL").toLowerCase();
-    const dotCol = ec==="buy"?"#00ff9f":ec==="sell"?"#ff4d6d":"#ffd700";
-    const sigCol = dotCol;
-    const NAME_MAP = {
-      "Mean Reversion":"Mean Rev",
-      "Multi-Timeframe":"Multi-TF",
-      "sector_corr":"Sector Corr",
-      "leader_lagger":"Ldr-Lagger",
-      "sector_rotation":"Sect Rotation",
-      "eps_fundamental":"EPS/Promoter"
-    };
-    const nm = NAME_MAP[e.name] || e.name;
-    const wt = e.weight ? (e.weight*100).toFixed(0)+"%" : "—";
-    const detail = (e.detail||"").substring(0,55);
-    // Vertical stack — sizes bumped to match rest of page
-    return '<div style="padding:14px 20px;border-bottom:1px solid rgba(255,255,255,.04)">'
-      + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'
-      +   '<div style="width:10px;height:10px;border-radius:50%;background:'+dotCol+';flex-shrink:0"></div>'
-      +   '<div style="font-family:var(--display);font-size:18px;font-weight:600;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+nm+'</div>'
-      + '</div>'
-      + '<div style="display:flex;align-items:center;gap:14px;padding-left:20px;font-size:15px">'
-      +   '<span style="color:'+sigCol+';font-weight:700;letter-spacing:1.5px;font-family:var(--display);min-width:70px;font-size:16px">'+e.signal+'</span>'
-      +   '<span style="color:var(--dim);font-family:var(--mono);min-width:40px;font-size:14px">'+wt+'</span>'
-      +   '<span style="color:var(--dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px" title="'+(e.detail||"")+'">'+detail+'</span>'
-      + '</div>'
-      + '</div>';
-  }).join("");
-
+  const engRows = "";  // no longer used — Engine Breakdown consolidated into Engine Consensus
+  
   // Position sizing row
   const posPct = tl.position_pct || 0;
   const posGuidance = tl.position_guidance || "";
@@ -1207,10 +1180,6 @@ function renderTradeCard(tl) {
       <div style="font-family:var(--display);font-size:14px;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim)">Suggested Position Size</div>
       <div style="flex:1">${posDisplay}</div>
       <div style="font-size:16px;color:var(--dim)">${posGuidance}</div>
-    </div>
-    <div class="trade-engine-section">
-      <div class="trade-engine-label">Engine Breakdown</div>
-      ${engRows || '<div style="color:var(--dim);font-size:16px">No engine data</div>'}
     </div>
     <div class="trade-disclaimer">⚠ For informational purposes only · Not financial advice · Always use your own judgment</div>
   `;
