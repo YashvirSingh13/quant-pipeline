@@ -1,4 +1,4 @@
-<!DOCTYPE html><!-- QP-ed7387d8-c56 2026-05-10 00:11:34 -->
+<!DOCTYPE html><!-- QP-de9cb068-48b 2026-05-10 05:38:47 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -664,7 +664,7 @@ select,input,button { font-family:var(--mono);font-size:20px;outline:none; }
 }
 </style>
 </head>
-<body><div style="position:fixed;bottom:4px;right:6px;font-size:9px;color:#445;z-index:9999;font-family:monospace;opacity:0.5">v.347dfd9c 00:11</div>
+<body><div style="position:fixed;bottom:4px;right:6px;font-size:9px;color:#445;z-index:9999;font-family:monospace;opacity:0.5">v.de9cb068 05:38</div>
 <div class="bg-orb bg-orb-1"></div>
 <div class="bg-orb bg-orb-2"></div>
 
@@ -1241,19 +1241,28 @@ function renderConsensus(consensus,engines){
   document.getElementById("consensus-conf-val").textContent=conf.toFixed(1)+"%";
   const bdMap={};
   (consensus.engine_breakdown||[]).forEach(b=>bdMap[b.engine]=b);
-  document.getElementById("engine-rows").innerHTML=`<table style="width:100%;table-layout:fixed;border-collapse:collapse;font-family:var(--display)"><colgroup><col style="width:24px"><col style="width:165px"><col style="width:75px"><col style="width:42px"><col></colgroup><tbody>${ENGINE_ORDER.map(name=>{
+  document.getElementById("engine-rows").innerHTML=ENGINE_ORDER.map(name=>{
     const bd=bdMap[name]||{};
     const res=(name==="xgboost")?bd:(engines?.[name]||bd);
-    const sig2=(bd.signal||res?.signal||"NEUTRAL");
-    const cls2=sig2==="BUY"?"buy":sig2==="SELL"?"sell":"neutral";
-    const dotColor=cls2==="buy"?"#00ff9f":cls2==="sell"?"#ff4d6d":"#ffd700";
-    const sigColor=cls2==="buy"?"#00ff9f":cls2==="sell"?"#ff4d6d":"#ffd700";
+    const sig=(bd.signal||res?.signal||"NEUTRAL");
+    const cls=sig==="BUY"?"buy":sig==="SELL"?"sell":"neutral";
+    const dot=cls==="buy"?"#00ff9f":cls==="sell"?"#ff4d6d":"#ffd700";
+    const sigCol=cls==="buy"?"#00ff9f":cls==="sell"?"#ff4d6d":"#ffd700";
     const w=Math.round((bd.weight||ENGINE_WEIGHTS?.[name]||0)*100)||0;
-    const reason=(bd.detail||bd.reason||"").substring(0,55);
-    const rawName=bd.display_name||ENGINE_LABELS[name]||name;
-    const dispName=rawName.length>14?rawName.substring(0,13)+"…":rawName;
-    return `<tr style="border-bottom:1px solid rgba(0,200,255,.05)"><td style="padding:11px 0 11px 16px;vertical-align:middle"><div style="width:8px;height:8px;border-radius:50%;background:${dotColor}"></div></td><td style="padding:11px 8px 11px 6px;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600;color:var(--text)" title="${rawName}">${dispName}</td><td style="padding:11px 0;vertical-align:middle;font-size:13px;font-weight:700;color:${sigColor};letter-spacing:1px">${sig2}</td><td style="padding:11px 0;vertical-align:middle;font-size:11px;color:var(--dim);text-align:right;padding-right:8px">${w}%</td><td style="padding:11px 16px 11px 8px;vertical-align:middle;font-size:11px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${reason}</td></tr>`;
-}).join("")}</tbody></table>`;
+    const reason=(bd.detail||bd.reason||"");
+    const dispName=bd.display_name||ENGINE_LABELS[name]||name;
+    return '<div style="padding:12px 16px;border-bottom:1px solid rgba(0,200,255,.05)">'
+      + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'
+      +   '<div style="width:8px;height:8px;border-radius:50%;background:'+dot+';flex-shrink:0"></div>'
+      +   '<div style="font-family:var(--display);font-size:13px;font-weight:600;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+dispName+'</div>'
+      + '</div>'
+      + '<div style="display:flex;align-items:center;gap:10px;padding-left:18px;font-size:11px">'
+      +   '<span style="color:'+sigCol+';font-weight:700;letter-spacing:1px;font-family:var(--display);min-width:60px">'+sig+'</span>'
+      +   '<span style="color:var(--dim);font-family:var(--mono);min-width:32px">'+w+'%</span>'
+      +   '<span style="color:var(--dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+reason+'</span>'
+      + '</div>'
+      + '</div>';
+  }).join("");
   // VIX
   const vix=consensus.vix_engine;
   if(vix){
