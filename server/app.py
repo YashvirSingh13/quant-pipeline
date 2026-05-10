@@ -1,4 +1,4 @@
-# QP-225aaecf-8ae 2026-05-09 17:56:59
+# QP-ed7387d8-c56 2026-05-10 00:11:34
 # QuantPipeline server QP-c04c8d65-e1d generated 2026-05-09 02:37:35
 """
 server/app.py — Upgraded FastAPI backend v4.
@@ -559,6 +559,22 @@ def _json_safe(obj):
 app = FastAPI(title="Quant Pipeline API", version="4.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"],
                    allow_methods=["*"], allow_headers=["*"])
+
+
+@app.middleware("http")
+async def no_cache_html(request, call_next):
+    """
+    Force iPad Safari and other aggressive browsers to always fetch fresh
+    HTML/CSS/JS. Without this, Safari can serve stale cached versions even
+    after the file changes on the server.
+    """
+    response = await call_next(request)
+    path = request.url.path
+    if path == "/" or path.endswith(".html") or path.endswith(".js") or path.endswith(".css"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 
 # ── State ────────────────────────────────────────────────────────────────────────
 _global_model   = None
