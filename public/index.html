@@ -1,4 +1,4 @@
-<!DOCTYPE html><!-- QP-af6a4d2d-752 2026-05-10 05:59:19 -->
+<!DOCTYPE html><!-- QP-721ba08b-098 2026-05-10 06:05:51 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -664,7 +664,7 @@ select,input,button { font-family:var(--mono);font-size:20px;outline:none; }
 }
 </style>
 </head>
-<body><div style="position:fixed;bottom:8px;right:10px;font-size:11px;color:#0ff;z-index:99999;font-family:monospace;background:#000;padding:3px 6px;border:1px solid #0ff;border-radius:3px;font-weight:bold">v.af6a4d2d 05:59</div>
+<body><div style="position:fixed;bottom:8px;right:10px;font-size:11px;color:#0ff;z-index:99999;font-family:monospace;background:#000;padding:3px 6px;border:1px solid #0ff;border-radius:3px;font-weight:bold">v.721ba08b 06:05</div>
 <div class="bg-orb bg-orb-1"></div>
 <div class="bg-orb bg-orb-2"></div>
 
@@ -1132,7 +1132,6 @@ function renderTradeCard(tl) {
     const ec = (e.signal||"NEUTRAL").toLowerCase();
     const dotCol = ec==="buy"?"#00ff9f":ec==="sell"?"#ff4d6d":"#ffd700";
     const sigCol = dotCol;
-    // Use SHORT label by mapping the server name to a short version
     const NAME_MAP = {
       "Mean Reversion":"Mean Rev",
       "Multi-Timeframe":"Multi-TF",
@@ -1144,17 +1143,16 @@ function renderTradeCard(tl) {
     const nm = NAME_MAP[e.name] || e.name;
     const wt = e.weight ? (e.weight*100).toFixed(0)+"%" : "—";
     const detail = (e.detail||"").substring(0,55);
-    // VERTICAL STACK — name on row 1, signal+weight+detail on row 2
-    // No columns means no column overflow
-    return '<div style="padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.04)">'
-      + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
-      +   '<div style="width:8px;height:8px;border-radius:50%;background:'+dotCol+';flex-shrink:0"></div>'
-      +   '<div style="font-family:var(--display);font-size:13px;font-weight:600;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+nm+'</div>'
+    // Vertical stack — sizes bumped to match rest of page
+    return '<div style="padding:14px 20px;border-bottom:1px solid rgba(255,255,255,.04)">'
+      + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'
+      +   '<div style="width:10px;height:10px;border-radius:50%;background:'+dotCol+';flex-shrink:0"></div>'
+      +   '<div style="font-family:var(--display);font-size:18px;font-weight:600;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+nm+'</div>'
       + '</div>'
-      + '<div style="display:flex;align-items:center;gap:10px;padding-left:16px;font-size:11px">'
-      +   '<span style="color:'+sigCol+';font-weight:700;letter-spacing:1px;font-family:var(--display);min-width:60px">'+e.signal+'</span>'
-      +   '<span style="color:var(--dim);font-family:var(--mono);min-width:34px">'+wt+'</span>'
-      +   '<span style="color:var(--dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+(e.detail||"")+'">'+detail+'</span>'
+      + '<div style="display:flex;align-items:center;gap:14px;padding-left:20px;font-size:15px">'
+      +   '<span style="color:'+sigCol+';font-weight:700;letter-spacing:1.5px;font-family:var(--display);min-width:70px;font-size:16px">'+e.signal+'</span>'
+      +   '<span style="color:var(--dim);font-family:var(--mono);min-width:40px;font-size:14px">'+wt+'</span>'
+      +   '<span style="color:var(--dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px" title="'+(e.detail||"")+'">'+detail+'</span>'
       + '</div>'
       + '</div>';
   }).join("");
@@ -1267,19 +1265,20 @@ function renderConsensus(consensus,engines){
     const sig=(bd.signal||res?.signal||"NEUTRAL");
     const cls=sig==="BUY"?"buy":sig==="SELL"?"sell":"neutral";
     const dot=cls==="buy"?"#00ff9f":cls==="sell"?"#ff4d6d":"#ffd700";
-    const sigCol=cls==="buy"?"#00ff9f":cls==="sell"?"#ff4d6d":"#ffd700";
+    const sigCol=dot;
     const w=Math.round((bd.weight||ENGINE_WEIGHTS?.[name]||0)*100)||0;
     const reason=(bd.detail||bd.reason||"");
     const dispName=bd.display_name||ENGINE_LABELS[name]||name;
-    return '<div style="padding:12px 16px;border-bottom:1px solid rgba(0,200,255,.05)">'
+    // Vertical stack — sizes bumped to match rest of page
+    return '<div style="padding:14px 20px;border-bottom:1px solid rgba(0,200,255,.05)">'
       + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'
-      +   '<div style="width:8px;height:8px;border-radius:50%;background:'+dot+';flex-shrink:0"></div>'
-      +   '<div style="font-family:var(--display);font-size:13px;font-weight:600;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+dispName+'</div>'
+      +   '<div style="width:10px;height:10px;border-radius:50%;background:'+dot+';flex-shrink:0"></div>'
+      +   '<div style="font-family:var(--display);font-size:18px;font-weight:600;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+dispName+'</div>'
       + '</div>'
-      + '<div style="display:flex;align-items:center;gap:10px;padding-left:18px;font-size:11px">'
-      +   '<span style="color:'+sigCol+';font-weight:700;letter-spacing:1px;font-family:var(--display);min-width:60px">'+sig+'</span>'
-      +   '<span style="color:var(--dim);font-family:var(--mono);min-width:32px">'+w+'%</span>'
-      +   '<span style="color:var(--dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+reason+'</span>'
+      + '<div style="display:flex;align-items:center;gap:14px;padding-left:20px">'
+      +   '<span style="color:'+sigCol+';font-weight:700;letter-spacing:1.5px;font-family:var(--display);min-width:70px;font-size:16px">'+sig+'</span>'
+      +   '<span style="color:var(--dim);font-family:var(--mono);min-width:40px;font-size:14px">'+w+'%</span>'
+      +   '<span style="color:var(--dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px">'+reason+'</span>'
       + '</div>'
       + '</div>';
   }).join("");
