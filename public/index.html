@@ -1,4 +1,4 @@
-<!DOCTYPE html><!-- QP-6f7fabd0-ef6 2026-05-10 06:13:00 -->
+<!DOCTYPE html><!-- QP-fb6b2fe4-a42 2026-05-10 06:29:54 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -664,7 +664,7 @@ select,input,button { font-family:var(--mono);font-size:20px;outline:none; }
 }
 </style>
 </head>
-<body><div style="position:fixed;bottom:8px;right:10px;font-size:11px;color:#0ff;z-index:99999;font-family:monospace;background:#000;padding:3px 6px;border:1px solid #0ff;border-radius:3px;font-weight:bold">v.6f7fabd0 06:13</div>
+<body><div style="position:fixed;bottom:8px;right:10px;font-size:11px;color:#0ff;z-index:99999;font-family:monospace;background:#000;padding:3px 6px;border:1px solid #0ff;border-radius:3px;font-weight:bold">v.fb6b2fe4 06:29</div>
 <div class="bg-orb bg-orb-1"></div>
 <div class="bg-orb bg-orb-2"></div>
 
@@ -1226,6 +1226,48 @@ function renderConsensus(consensus,engines){
   document.getElementById("consensus-conf-fill").style.width=Math.min(conf*2,100)+"%";
   document.getElementById("consensus-conf-fill").className=`consensus-conf-fill ${cls}`;
   document.getElementById("consensus-conf-val").textContent=conf.toFixed(1)+"%";
+
+  // ── 70%+ HIGH CONFIDENCE HIGHLIGHT ─────────────────────────────────────
+  // Visual emphasis when fusion confidence is at trade-worthy level
+  const panel=document.getElementById("consensus-panel");
+  const tradeCard=document.querySelector(".trade-levels-card") || document.getElementById("trade-levels-panel");
+  if(conf>=70 && (sig==="BUY"||sig==="SELL")){
+    panel.style.boxShadow = sig==="BUY"
+      ? "0 0 30px rgba(0,255,159,.4), inset 0 0 20px rgba(0,255,159,.1)"
+      : "0 0 30px rgba(255,77,109,.4), inset 0 0 20px rgba(255,77,109,.1)";
+    panel.style.borderColor = sig==="BUY" ? "rgba(0,255,159,.6)" : "rgba(255,77,109,.6)";
+    panel.style.borderWidth = "2px";
+    if(tradeCard){
+      tradeCard.style.boxShadow = panel.style.boxShadow;
+      tradeCard.style.borderColor = panel.style.borderColor;
+    }
+    // Add a "HIGH CONFIDENCE" badge if not already present
+    let badge = document.getElementById("high-conf-badge");
+    if(!badge){
+      badge = document.createElement("div");
+      badge.id = "high-conf-badge";
+      badge.style.cssText = "position:absolute;top:12px;right:16px;font-family:var(--display);font-size:13px;font-weight:700;letter-spacing:1.5px;padding:5px 12px;border-radius:4px;z-index:10;animation:pulse 2s ease-in-out infinite";
+      panel.style.position = "relative";
+      panel.appendChild(badge);
+    }
+    badge.style.background = sig==="BUY" ? "rgba(0,255,159,.15)" : "rgba(255,77,109,.15)";
+    badge.style.color      = sig==="BUY" ? "#00ff9f" : "#ff4d6d";
+    badge.style.border     = `1px solid ${panel.style.borderColor}`;
+    badge.textContent = `★ HIGH CONFIDENCE ${sig}`;
+    badge.style.display = "block";
+  } else {
+    // Reset to defaults when confidence is below 70%
+    panel.style.boxShadow = "";
+    panel.style.borderColor = "";
+    panel.style.borderWidth = "";
+    if(tradeCard){
+      tradeCard.style.boxShadow = "";
+      tradeCard.style.borderColor = "";
+    }
+    const badge = document.getElementById("high-conf-badge");
+    if(badge) badge.style.display = "none";
+  }
+
   const bdMap={};
   (consensus.engine_breakdown||[]).forEach(b=>bdMap[b.engine]=b);
   document.getElementById("engine-rows").innerHTML=ENGINE_ORDER.map(name=>{
