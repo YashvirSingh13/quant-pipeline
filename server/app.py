@@ -1,4 +1,4 @@
-# QP-97b45f75-ea8 2026-05-10 15:04:51
+# QP-6eef4fd9-977 2026-05-10 15:59:36
 # QuantPipeline server QP-c04c8d65-e1d generated 2026-05-09 02:37:35
 """
 server/app.py — Upgraded FastAPI backend v4.
@@ -1529,6 +1529,44 @@ def predict_live(ticker: str):
                                              horizon)
     except Exception:
         pass  # keep the placeholder trade_levels from above
+
+    # ── PREDICTION LOG: record this signal so /predictions can serve it ──────
+    try:
+        from engines.performance_tracker import record_signals
+        _entries = [{
+            "engine": "fusion",
+            "signal": ml_result.get("signal", "NEUTRAL"),
+            "score":  float(ml_result.get("confidence", 0)) / 100.0,
+        }]
+        for _en, _ed in [
+            ("xgboost",          ml_result),
+            ("mean_reversion",   mr_res),
+            ("multi_timeframe",  mtf_res),
+            ("sentiment",        sen_res),
+            ("fundamental_rank", fun_res),
+            ("sector_corr",      sec_res),
+            ("leader_lagger",    ll_res),
+            ("sector_rotation",  secr_res),
+            ("eps_fundamental",  eps_for_fusion),
+        ]:
+            if isinstance(_ed, dict):
+                _entries.append({
+                    "engine": _en,
+                    "signal": _ed.get("signal", "NEUTRAL"),
+                    "score":  float(_ed.get("score", _ed.get("confidence", 0.5)) or 0.5),
+                })
+        _vix_pct = float(feats.get("VIX_IN_Pct", 0.5) or 0.5)
+        _regime  = "TRENDING" if _vix_pct < 0.3 else ("VOLATILE" if _vix_pct > 0.7 else "SIDEWAYS")
+        record_signals(
+            ticker         = ticker,
+            engine_results = _entries,
+            regime         = _regime,
+            price          = float(feats.get("_last_price", 0) or 0),
+        )
+        _logged = len([e for e in _entries if e['signal']!='NEUTRAL'])
+        print(f"📝 Logged {_logged} non-NEUTRAL signals for {ticker}")
+    except Exception as _log_exc:
+        print(f"⚠  Prediction log failed (non-fatal): {_log_exc}")
 
     return _json_safe({
         **ml_result,
