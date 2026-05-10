@@ -1,4 +1,4 @@
-# QP-358b5ec3-e76 2026-05-10 06:52:11
+# QP-97b45f75-ea8 2026-05-10 15:04:51
 # QuantPipeline server QP-c04c8d65-e1d generated 2026-05-09 02:37:35
 """
 server/app.py — Upgraded FastAPI backend v4.
@@ -724,18 +724,12 @@ def _reload_artefacts():
         except Exception as e:
             print(f"❌ Metadata load failed: {e}")
 
-    # Load per-stock models into cache
+    # Lazy-load per-stock models — only load on demand to fit Railway memory
+    # (Loading all 48 at boot = 1.4GB → OOM. Now LRU-capped at 8 in memory.)
+    available = 0
     if os.path.exists(MODELS_DIR):
-        loaded = 0
-        for fname in os.listdir(MODELS_DIR):
-            if fname.endswith(".pkl"):
-                ticker = fname.replace("_NS.pkl",".NS").replace("_BO.pkl",".BO")
-                try:
-                    _stock_models[ticker] = joblib.load(os.path.join(MODELS_DIR, fname))
-                    loaded += 1
-                except Exception:
-                    pass
-        print(f"✅ {loaded} per-stock models loaded")
+        available = sum(1 for f in os.listdir(MODELS_DIR) if f.endswith(".pkl"))
+    print(f"✅ {available} per-stock models available (lazy-load, cap={MAX_STOCK_MODELS} in memory)")
 
 def _run_training():
     """Run train.py as a subprocess then reload all models into memory."""
@@ -1128,9 +1122,14 @@ class PredictBody(BaseModel):
 
 # ── _schedule_auto_retrain ────────────────────────────────────────────────────
 def _schedule_auto_retrain():
-    """Schedule a background retrain when a new stock is registered."""
+    """Schedule a background retrain when a new stock is registered.
+    Skips if a retrain is already in flight — prevents concurrent retrains
+    that would corrupt model files and block subsequent stock additions."""
     import threading
     global _learning
+    if _learning:
+        print("⏭  Skipped auto-retrain — one is already in progress")
+        return
     _learning = True
     def _do():
         try:
