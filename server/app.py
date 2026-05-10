@@ -1,4 +1,4 @@
-# QP-38618783-51b 2026-05-10 06:39:22
+# QP-358b5ec3-e76 2026-05-10 06:52:11
 # QuantPipeline server QP-c04c8d65-e1d generated 2026-05-09 02:37:35
 """
 server/app.py — Upgraded FastAPI backend v4.
@@ -588,6 +588,7 @@ _global_model   = None
 _label_encoder  = None
 _metadata: dict = {}
 _stock_models   = {}    # ticker → per-stock XGBoost model (cached in memory)
+_regime_models  = {}    # 'bull'/'normal'/'volatile' → regime model (cached, prevents heap corruption from repeated joblib.load() per request)
 _retraining     = False
 _learning       = False
 _retrain_timer  = None
@@ -641,7 +642,9 @@ def _stock_model_path(ticker: str) -> str:
     return os.path.join(MODELS_DIR, f"{safe}.pkl")
 
 def _get_model_for_ticker(ticker: str, vix_level: float = None):
-    """Return (model, feature_list, model_type). Regime-aware selection."""
+    """Return (model, feature_list, model_type). Regime-aware selection.
+    Models are cached in memory after first load (prevents heap corruption from
+    repeated joblib.load() calls)."""
     # Per-stock model first
     if ticker in _stock_models:
         return _stock_models[ticker], STOCK_FEATURES, "per-stock"
@@ -651,14 +654,23 @@ def _get_model_for_ticker(ticker: str, vix_level: float = None):
         _stock_models[ticker] = m
         return m, STOCK_FEATURES, "per-stock"
 
-    # Regime model based on VIX
+    # Regime model based on VIX — CACHED (loaded from disk once, then reused)
     if vix_level is not None:
-        if vix_level < 15 and os.path.exists(MODEL_BULL):
-            return joblib.load(MODEL_BULL), GLOBAL_FEATURES, "regime-bull"
-        elif vix_level >= 22 and os.path.exists(MODEL_VOLATILE):
-            return joblib.load(MODEL_VOLATILE), GLOBAL_FEATURES, "regime-volatile"
-        elif os.path.exists(MODEL_NORMAL):
-            return joblib.load(MODEL_NORMAL), GLOBAL_FEATURES, "regime-normal"
+        if vix_level < 15:
+            if "bull" not in _regime_models and os.path.exists(MODEL_BULL):
+                _regime_models["bull"] = joblib.load(MODEL_BULL)
+            if "bull" in _regime_models:
+                return _regime_models["bull"], GLOBAL_FEATURES, "regime-bull"
+        elif vix_level >= 22:
+            if "volatile" not in _regime_models and os.path.exists(MODEL_VOLATILE):
+                _regime_models["volatile"] = joblib.load(MODEL_VOLATILE)
+            if "volatile" in _regime_models:
+                return _regime_models["volatile"], GLOBAL_FEATURES, "regime-volatile"
+        else:
+            if "normal" not in _regime_models and os.path.exists(MODEL_NORMAL):
+                _regime_models["normal"] = joblib.load(MODEL_NORMAL)
+            if "normal" in _regime_models:
+                return _regime_models["normal"], GLOBAL_FEATURES, "regime-normal"
 
     # Global fallback
     if _global_model is None:
@@ -672,7 +684,7 @@ except ImportError:
     pass  # model will still load if not calibrated
 
 def _reload_artefacts():
-    global _global_model, _label_encoder, _metadata, _stock_models
+    global _global_model, _label_encoder, _metadata, _stock_models, _regime_models
 
     # Ensure ml package is importable so CalibratedModel can be deserialised
     _app_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -683,7 +695,8 @@ def _reload_artefacts():
     except ImportError as _e:
         print(f"⚠  CalibratedModel import failed: {_e}")
 
-    _stock_models = {}  # clear cache so fresh models load
+    _stock_models = {}
+    _regime_models.clear()  # Drop cached regime models — fresh ones reload on demand
 
     if os.path.exists(MODEL_PATH):
         try:
