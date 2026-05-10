@@ -1,4 +1,4 @@
-<!DOCTYPE html><!-- QP-fb6b2fe4-a42 2026-05-10 06:29:54 -->
+<!DOCTYPE html><!-- QP-97b45f75-ea8 2026-05-10 15:04:51 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -664,7 +664,7 @@ select,input,button { font-family:var(--mono);font-size:20px;outline:none; }
 }
 </style>
 </head>
-<body><div style="position:fixed;bottom:8px;right:10px;font-size:11px;color:#0ff;z-index:99999;font-family:monospace;background:#000;padding:3px 6px;border:1px solid #0ff;border-radius:3px;font-weight:bold">v.fb6b2fe4 06:29</div>
+<body><div style="position:fixed;bottom:8px;right:10px;font-size:11px;color:#0ff;z-index:99999;font-family:monospace;background:#000;padding:3px 6px;border:1px solid #0ff;border-radius:3px;font-weight:bold">v.97b45f75 15:04</div>
 <div class="bg-orb bg-orb-1"></div>
 <div class="bg-orb bg-orb-2"></div>
 
@@ -1536,7 +1536,16 @@ async function fetchLive(){
       c.classList.toggle("active",c.textContent===ticker.replace(/\.NS|\.BO/,""))
     );
     document.getElementById("stocks-count").textContent=d.total_stocks||"—";
-    if(d.new_stock){setLearning(ticker,d.total_stocks);toast(`New stock! ${ticker} added to training registry.`,"warn");}
+    if(d.new_stock){
+      // Track which tickers we've already shown the notification for in this session
+      window._announcedNewStocks = window._announcedNewStocks || new Set();
+      if(!window._announcedNewStocks.has(ticker)){
+        window._announcedNewStocks.add(ticker);
+        setLearning(ticker,d.total_stocks);
+        toast(`New stock! ${ticker} added to training registry.`,"warn");
+      }
+      // If we've already shown this notification, just silently update count
+    }
     else toast(`Signal ready — ${ticker}`);
     // Show backtest panel
     document.getElementById("bt-panel").style.display="block";
@@ -1933,15 +1942,26 @@ function renderPredictions(d) {
                : oc === "WRONG"   ? `<span class="pred-outcome WRONG">✗ WRONG</span>`
                : `<span class="pred-outcome pending">Pending (${p.resolve_date})</span>`;
     const eng  = p.engine || "—";
-    const sc   = p.score != null ? (p.score*100).toFixed(1)+"%" : "—";
+    const scoreNum = p.score != null ? p.score*100 : null;
+    const sc   = scoreNum != null ? scoreNum.toFixed(1)+"%" : "—";
     const reg  = p.regime || "—";
     const tick = (p.ticker || "—").replace(".NS","").replace(".BO","");
-    return `<tr>
+    // Highlight rows with ≥70% confidence — these are the high-conviction signals
+    const isHighConf = scoreNum != null && scoreNum >= 70 && (sig === "BUY" || sig === "SELL");
+    const rowStyle = isHighConf
+      ? `background:${sig==="BUY"?"rgba(0,255,159,.08)":"rgba(255,77,109,.08)"};border-left:3px solid ${sig==="BUY"?"#00ff9f":"#ff4d6d"}`
+      : "";
+    const scoreStyle = isHighConf
+      ? `font-family:var(--mono);font-weight:700;color:${sig==="BUY"?"#00ff9f":"#ff4d6d"}`
+      : "font-family:var(--mono)";
+    const tickStyle = `font-family:var(--display);font-size:15px;font-weight:600;color:${isHighConf?(sig==="BUY"?"#00ff9f":"#ff4d6d"):"var(--accent)"}`;
+    const star = isHighConf ? `<span style="margin-right:4px">★</span>` : "";
+    return `<tr style="${rowStyle}">
       <td style="white-space:nowrap;color:var(--dim)">${dtStr}</td>
-      <td style="font-family:var(--display);font-size:15px;font-weight:600;color:var(--accent)">${tick}</td>
+      <td style="${tickStyle}">${star}${tick}</td>
       <td style="font-size:15px;color:var(--dim)">${eng}</td>
       <td><span class="pred-signal ${sig}">${sig}</span></td>
-      <td style="font-family:var(--mono)">${sc}</td>
+      <td style="${scoreStyle}">${sc}</td>
       <td><span class="vix-badge ${reg}" style="font-size:13px">${reg}</span></td>
       <td>${ocEl}</td>
     </tr>`;
