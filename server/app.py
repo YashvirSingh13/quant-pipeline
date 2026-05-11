@@ -1,4 +1,4 @@
-# QP-fff6c201-e85 2026-05-11 05:35:03
+# QP-2cd6fb11-bda 2026-05-11 06:02:02
 # QuantPipeline server QP-c04c8d65-e1d generated 2026-05-09 02:37:35
 """
 server/app.py — Upgraded FastAPI backend v4.
@@ -590,15 +590,24 @@ _metadata: dict = {}
 from collections import OrderedDict as _OrderedDict
 MAX_STOCK_MODELS = 8                # Max stock models held in memory (LRU eviction beyond this)
                                     # 8 × ~30MB = ~240MB peak, fits Railway free tier
+_retrain_state  = {"started_at": None, "completed_at": None,
+                   "last_status": None, "last_error": None,
+                   "trigger_ticker": None}  # surface retrain progress to UI
+
 _stock_models   = _OrderedDict()    # LRU cache: ticker → per-stock XGBoost model
 _regime_models  = {}                # 'bull'/'normal'/'volatile' → regime model (cached to prevent heap corruption from repeated joblib.load() per request)
 
 def _evict_old_models():
-    """Pop oldest entries until we are under MAX_STOCK_MODELS. Called after every insertion."""
+    """Pop oldest entries until we are under MAX_STOCK_MODELS.
+    NOTE: Do NOT 'del' the popped XGBoost model — if any concurrent request is
+    holding a reference, forced deletion will corrupt the C heap and abort the
+    process. Python's GC handles cleanup safely once references drop to zero."""
     while len(_stock_models) > MAX_STOCK_MODELS:
-        evicted_ticker, _evicted_model = _stock_models.popitem(last=False)
+        evicted_ticker, _ = _stock_models.popitem(last=False)
         print(f"💧 Evicted {evicted_ticker} from cache (LRU)")
-        del _evicted_model
+    # After eviction, hint GC to reclaim freed memory
+    import gc
+    gc.collect()
 _retraining     = False
 _learning       = False
 _retrain_timer  = None
@@ -743,21 +752,41 @@ def _reload_artefacts():
         available = sum(1 for f in os.listdir(MODELS_DIR) if f.endswith(".pkl"))
     print(f"✅ {available} per-stock models available (lazy-load, cap={MAX_STOCK_MODELS} in memory)")
 
-def _run_training():
-    """Run train.py as a subprocess then reload all models into memory."""
+    # If a previous run owed training (new stock added + crash before completion),
+    # honor the debt now by scheduling a retrain on startup.
+    _owed_flag = os.path.join(DATA_DIR, "training_owed.flag")
+    if os.path.exists(_owed_flag):
+        try:
+            with open(_owed_flag) as _f: _owed = _f.read().strip()
+            print(f"🪧 Found training_owed.flag for '{_owed}' — scheduling retrain")
+            _schedule_auto_retrain()
+        except Exception as _e:
+            print(f"⚠ Failed to honor training_owed.flag: {_e}")
+
+def _run_training(single_ticker: str = None):
+    """Run train.py as a subprocess then reload all models into memory.
+
+    If `single_ticker` is given, runs the fast single-stock path that only
+    downloads + trains that one ticker (~30s). Otherwise runs full retraining
+    of all stocks + global + regime models (~3-5min)."""
     import subprocess
     global _retraining
     _retraining = True
     try:
-        result = subprocess.run(
-            ["python3", "/app/ml/train.py"],
-            capture_output=False,
-            timeout=1800,   # 30 min max
-        )
+        if single_ticker:
+            cmd = ["python3", "/app/ml/train.py", "--single", single_ticker]
+            timeout = 120        # 2 min max for single-stock
+            mode    = f"single-stock ({single_ticker})"
+        else:
+            cmd = ["python3", "/app/ml/train.py"]
+            timeout = 1800       # 30 min max for full
+            mode    = "full"
+        print(f"🚂 Training subprocess: {mode}")
+        result = subprocess.run(cmd, capture_output=False, timeout=timeout)
         if result.returncode != 0:
-            raise RuntimeError(f"train.py exited with code {result.returncode}")
+            raise RuntimeError(f"train.py ({mode}) exited with code {result.returncode}")
         _reload_artefacts()
-        print("✅ Training + model reload complete")
+        print(f"✅ Training ({mode}) + model reload complete")
     finally:
         _retraining = False
 
@@ -1133,7 +1162,7 @@ class PredictBody(BaseModel):
 # ── Routes ───────────────────────────────────────────────────────────────────────
 
 # ── _schedule_auto_retrain ────────────────────────────────────────────────────
-def _schedule_auto_retrain():
+def _schedule_auto_retrain(trigger_ticker=None):
     """Schedule a background retrain when a new stock is registered.
     Skips if a retrain is already in flight — prevents concurrent retrains
     that would corrupt model files and block subsequent stock additions."""
@@ -1143,14 +1172,37 @@ def _schedule_auto_retrain():
         print("⏭  Skipped auto-retrain — one is already in progress")
         return
     _learning = True
+    import datetime as _dt
+    _retrain_state["started_at"]     = _dt.datetime.utcnow().isoformat()
+    _retrain_state["completed_at"]   = None
+    _retrain_state["last_status"]    = "running"
+    _retrain_state["last_error"]     = None
+    _retrain_state["trigger_ticker"] = trigger_ticker
+
     def _do():
         try:
-            print("🧠 Auto-retrain triggered (new stock added)…")
-            _run_training()
+            print(f"🧠 Single-stock train (new stock: {trigger_ticker})…")
+            # Only train this stock's per-stock model — fast (~30s) and isolated.
+            # User can hit the manual Retrain button for full periodic retraining.
+            _run_training(single_ticker=trigger_ticker)
+            _retrain_state["last_status"] = "success"
+            _retrain_state["last_error"]  = None
             print("🧠 Auto-retrain complete ✅")
+            # Clear the owed-training flag now that we've honored it
+            try:
+                _owed_flag = os.path.join(DATA_DIR, "training_owed.flag")
+                if os.path.exists(_owed_flag):
+                    os.remove(_owed_flag)
+                    print("🧹 Cleared training_owed.flag")
+            except Exception:
+                pass
         except Exception as exc:
+            _retrain_state["last_status"] = "failed"
+            _retrain_state["last_error"]  = str(exc)[:200]
             print(f"❌ Auto-retrain failed: {exc}")
         finally:
+            import datetime as _dt
+            _retrain_state["completed_at"] = _dt.datetime.utcnow().isoformat()
             global _learning
             _learning = False
     t = threading.Thread(target=_do, daemon=True)
@@ -1514,10 +1566,20 @@ def predict_live(ticker: str):
                                          ml_result.get("signal","NEUTRAL"),
                                          _tmp_horizon)
 
-    # Register stock
+    # Register stock + persistent retrain marker
+    # This ordering matters: write the marker FIRST so a crash during
+    # prediction doesn't leave the new stock un-trained forever.
     is_new = _register_stock(ticker)
     if is_new:
-        _schedule_auto_retrain()
+        try:
+            # Drop a sentinel file so _reload_artefacts() on next startup
+            # (or a manual /retrain call) knows training is owed.
+            with open(os.path.join(DATA_DIR, "training_owed.flag"), "w") as _f:
+                _f.write(ticker)
+            print(f"🪧 Marked training as owed for {ticker}")
+        except Exception as _flag_exc:
+            print(f"⚠ Could not write training_owed.flag: {_flag_exc}")
+        _schedule_auto_retrain(trigger_ticker=ticker)
 
     # SHAP
     shap_result = []
@@ -1679,8 +1741,14 @@ def get_metadata():
 
 @app.get("/learning")
 def learning_status():
-    return {"learning": _learning, "retraining": _retraining,
-            "n_stocks": len(_load_known_stocks())}
+    return {"learning":         _learning,
+            "retraining":       _retraining,
+            "n_stocks":         len(_load_known_stocks()),
+            "retrain_started":  _retrain_state.get("started_at"),
+            "retrain_completed":_retrain_state.get("completed_at"),
+            "retrain_status":   _retrain_state.get("last_status"),
+            "retrain_error":    _retrain_state.get("last_error"),
+            "retrain_ticker":   _retrain_state.get("trigger_ticker")}
 
 @app.post("/retrain")
 def manual_retrain(background_tasks: BackgroundTasks):
