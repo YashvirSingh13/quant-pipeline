@@ -1,4 +1,4 @@
-# QP-199ffb08-143 2026-05-11 08:08:59
+# QP-b85aa94f-8ac 2026-05-11 08:20:32
 # ── train.py v6 — 5 accuracy improvements ────────────────────────────────────
 """
 Changes from v5:
@@ -864,23 +864,29 @@ def train_single_stock(ticker: str) -> bool:
         return False
 
     # ─── Train + calibrate ────────────────────────────────────────────
-    active_feats = get_active_features()
+    # get_active_features returns (stock_features, global_features) tuple —
+    # for per-stock training, use stock_features.
+    active_stock_feats, _active_global_feats = get_active_features()
+
     # Final defensive flatten right before column selection — bulletproof
     # against build_features producing tuple-keyed columns
     feat_df = _flatten_cols(feat_df)
-    print(f"   feat_df.columns sample: {list(feat_df.columns)[:5]} (type={type(feat_df.columns).__name__})")
+    print(f"   feat_df has {len(feat_df.columns)} columns, sample first 5: {list(feat_df.columns)[:5]}")
+    print(f"   active_stock_feats has {len(active_stock_feats)} features")
+
     # Verify all needed features are present
-    missing = [c for c in active_feats if c not in feat_df.columns]
+    missing = [c for c in active_stock_feats if c not in feat_df.columns]
     if missing:
         print(f"✗   Missing features in feat_df: {missing[:10]}")
         return False
-    X = feat_df[active_feats]
+
+    X = feat_df[active_stock_feats]
     y = feat_df["Target"]
     buy_pct = float(y.mean()) if len(y) else 0.5
     spw = float(np.clip((1 - buy_pct) / max(buy_pct, 0.01), 0.5, 3.0))
 
     print(f"🧠  Training on {len(X)} samples ({buy_pct*100:.1f}% positive)…")
-    pm = make_xgb(scale_pos_weight=spw, n_feat=len(active_feats))
+    pm = make_xgb(scale_pos_weight=spw, n_feat=len(active_stock_feats))
     pm.fit(X, y)
     pm_cal = calibrate_model(pm, X, y)
     joblib.dump(pm_cal, stock_model_path(ticker))
