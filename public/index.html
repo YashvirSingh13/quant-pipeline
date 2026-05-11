@@ -1,4 +1,4 @@
-<!DOCTYPE html><!-- QP-239901db-443 2026-05-10 16:10:21 -->
+<!DOCTYPE html><!-- QP-e46f3d21-c4d 2026-05-11 05:54:40 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -664,7 +664,7 @@ select,input,button { font-family:var(--mono);font-size:20px;outline:none; }
 }
 </style>
 </head>
-<body><div style="position:fixed;bottom:8px;right:10px;font-size:11px;color:#0ff;z-index:99999;font-family:monospace;background:#000;padding:3px 6px;border:1px solid #0ff;border-radius:3px;font-weight:bold">v.239901db 16:10</div>
+<body><div style="position:fixed;bottom:8px;right:10px;font-size:11px;color:#0ff;z-index:99999;font-family:monospace;background:#000;padding:3px 6px;border:1px solid #0ff;border-radius:3px;font-weight:bold">v.e46f3d21 05:54</div>
 <div class="bg-orb bg-orb-1"></div>
 <div class="bg-orb bg-orb-2"></div>
 
@@ -1443,9 +1443,19 @@ async function pollLearning(){
   try{
     const r=await fetch(`${API}/learning`); const d=await r.json();
     document.getElementById("stocks-count").textContent=d.n_stocks;
+    // Surface explicit success / failure from the retrain status
     if(!d.learning&&!d.retraining){
       clearLearning(); loadMeta();
-      toast(`Model updated — ${_learningTicker||"new stock"} added ✓`);
+      const status = d.retrain_status; // "success" | "failed" | "running" | null
+      const ticker = d.retrain_ticker || _learningTicker || "new stock";
+      if(status === "failed"){
+        const err = d.retrain_error || "unknown error";
+        toast(`⚠ Training ${ticker} failed: ${err.substring(0,80)}. Using regime model meanwhile.`, "error");
+      } else if(status === "success"){
+        toast(`✓ ${ticker} model trained and ready`, "success");
+      } else {
+        toast(`Model updated — ${ticker} added ✓`);
+      }
     }
   }catch(_){}
 }
