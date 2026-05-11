@@ -1,4 +1,4 @@
-# QP-bbd76659-ca8 2026-05-10 16:23:29
+# QP-fff6c201-e85 2026-05-11 05:35:03
 # QuantPipeline server QP-c04c8d65-e1d generated 2026-05-09 02:37:35
 """
 server/app.py — Upgraded FastAPI backend v4.
@@ -587,8 +587,18 @@ async def no_cache_html(request, call_next):
 _global_model   = None
 _label_encoder  = None
 _metadata: dict = {}
-_stock_models   = {}    # ticker → per-stock XGBoost model (cached in memory)
-_regime_models  = {}    # 'bull'/'normal'/'volatile' → regime model (cached, prevents heap corruption from repeated joblib.load() per request)
+from collections import OrderedDict as _OrderedDict
+MAX_STOCK_MODELS = 8                # Max stock models held in memory (LRU eviction beyond this)
+                                    # 8 × ~30MB = ~240MB peak, fits Railway free tier
+_stock_models   = _OrderedDict()    # LRU cache: ticker → per-stock XGBoost model
+_regime_models  = {}                # 'bull'/'normal'/'volatile' → regime model (cached to prevent heap corruption from repeated joblib.load() per request)
+
+def _evict_old_models():
+    """Pop oldest entries until we are under MAX_STOCK_MODELS. Called after every insertion."""
+    while len(_stock_models) > MAX_STOCK_MODELS:
+        evicted_ticker, _evicted_model = _stock_models.popitem(last=False)
+        print(f"💧 Evicted {evicted_ticker} from cache (LRU)")
+        del _evicted_model
 _retraining     = False
 _learning       = False
 _retrain_timer  = None
@@ -647,11 +657,13 @@ def _get_model_for_ticker(ticker: str, vix_level: float = None):
     repeated joblib.load() calls)."""
     # Per-stock model first
     if ticker in _stock_models:
+        _stock_models.move_to_end(ticker)  # touch — mark as recently used
         return _stock_models[ticker], STOCK_FEATURES, "per-stock"
     path = _stock_model_path(ticker)
     if os.path.exists(path):
         m = joblib.load(path)
         _stock_models[ticker] = m
+        _evict_old_models()                # enforce cap
         return m, STOCK_FEATURES, "per-stock"
 
     # Regime model based on VIX — CACHED (loaded from disk once, then reused)
