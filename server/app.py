@@ -1,4 +1,4 @@
-# QP-5db46b0c-5ab 2026-05-11 12:07:37
+# QP-4abb42fb-477 2026-05-11 12:30:43
 # QuantPipeline server QP-c04c8d65-e1d generated 2026-05-09 02:37:35
 """
 server/app.py — Upgraded FastAPI backend v4.
@@ -716,8 +716,8 @@ def _reload_artefacts():
     except ImportError as _e:
         print(f"⚠  CalibratedModel import failed: {_e}")
 
-    _stock_models = {}
-    _regime_models.clear()  # Drop cached regime models — fresh ones reload on demand
+    _stock_models.clear()    # Clear LRU cache — preserves OrderedDict type
+    _regime_models.clear()    # Drop cached regime models — fresh ones reload on demand
 
     if os.path.exists(MODEL_PATH):
         try:
