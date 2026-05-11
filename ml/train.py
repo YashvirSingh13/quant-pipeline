@@ -1,4 +1,4 @@
-# QP-c540811f-9fc 2026-05-11 07:12:51
+# QP-199ffb08-143 2026-05-11 08:08:59
 # ── train.py v6 — 5 accuracy improvements ────────────────────────────────────
 """
 Changes from v5:
@@ -738,12 +738,31 @@ def train_single_stock(ticker: str) -> bool:
         return False
 
     def _flatten_cols(df):
-        """Flatten yfinance MultiIndex columns. Newer yfinance versions return
-        columns like [('Open','RELIANCE.NS'), ...] even for single tickers."""
+        """Force-flatten DataFrame columns to a plain Index of strings.
+
+        Newer yfinance returns MultiIndex columns even for single tickers.
+        After build_features() mixes string-key assignments into such a frame,
+        columns can end up as an Index of tuples (NOT a MultiIndex), which
+        bypasses isinstance(MultiIndex) checks but still breaks list selection.
+
+        This function aggressively detects BOTH cases and rebuilds the columns
+        as a fresh Index of plain strings.
+        """
         if df is None or df.empty:
             return df
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
+        cols = list(df.columns)
+        # Detect either: real MultiIndex, OR ordinary Index of tuples
+        needs_flatten = isinstance(df.columns, pd.MultiIndex) or                         any(isinstance(c, tuple) for c in cols)
+        if needs_flatten:
+            new_cols = []
+            for c in cols:
+                if isinstance(c, tuple):
+                    # Prefer first non-empty level (e.g. 'Open' not '' or ticker)
+                    first_non_empty = next((str(x) for x in c if str(x).strip()), str(c[0]))
+                    new_cols.append(first_non_empty)
+                else:
+                    new_cols.append(str(c))
+            df.columns = pd.Index(new_cols)
         return df
 
     # ─── Download macro indicators (small, fast) ──────────────────────
@@ -846,6 +865,15 @@ def train_single_stock(ticker: str) -> bool:
 
     # ─── Train + calibrate ────────────────────────────────────────────
     active_feats = get_active_features()
+    # Final defensive flatten right before column selection — bulletproof
+    # against build_features producing tuple-keyed columns
+    feat_df = _flatten_cols(feat_df)
+    print(f"   feat_df.columns sample: {list(feat_df.columns)[:5]} (type={type(feat_df.columns).__name__})")
+    # Verify all needed features are present
+    missing = [c for c in active_feats if c not in feat_df.columns]
+    if missing:
+        print(f"✗   Missing features in feat_df: {missing[:10]}")
+        return False
     X = feat_df[active_feats]
     y = feat_df["Target"]
     buy_pct = float(y.mean()) if len(y) else 0.5
