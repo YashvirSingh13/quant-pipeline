@@ -1,4 +1,4 @@
-# QP-2cd6fb11-bda 2026-05-11 06:02:02
+# QP-5db46b0c-5ab 2026-05-11 12:07:37
 # QuantPipeline server QP-c04c8d65-e1d generated 2026-05-09 02:37:35
 """
 server/app.py — Upgraded FastAPI backend v4.
@@ -764,29 +764,49 @@ def _reload_artefacts():
             print(f"⚠ Failed to honor training_owed.flag: {_e}")
 
 def _run_training(single_ticker: str = None):
-    """Run train.py as a subprocess then reload all models into memory.
+    """Run train.py as a subprocess.
 
-    If `single_ticker` is given, runs the fast single-stock path that only
-    downloads + trains that one ticker (~30s). Otherwise runs full retraining
-    of all stocks + global + regime models (~3-5min)."""
-    import subprocess
+    Single-stock mode: only adds the new model to the LRU cache when complete.
+    Does NOT call _reload_artefacts() — that resets the global cache, which
+    can race with concurrent /live requests still using cached models
+    (XGBoost C++ frees → "corrupted size vs. prev_size" crash).
+
+    Full mode: calls _reload_artefacts() to refresh global+regime+per-stock
+    models. Acceptable race risk because users trigger it manually + rarely.
+    """
+    import subprocess, joblib, os
     global _retraining
     _retraining = True
     try:
         if single_ticker:
             cmd = ["python3", "/app/ml/train.py", "--single", single_ticker]
-            timeout = 120        # 2 min max for single-stock
+            timeout = 120
             mode    = f"single-stock ({single_ticker})"
         else:
             cmd = ["python3", "/app/ml/train.py"]
-            timeout = 1800       # 30 min max for full
+            timeout = 1800
             mode    = "full"
         print(f"🚂 Training subprocess: {mode}")
         result = subprocess.run(cmd, capture_output=False, timeout=timeout)
         if result.returncode != 0:
             raise RuntimeError(f"train.py ({mode}) exited with code {result.returncode}")
-        _reload_artefacts()
-        print(f"✅ Training ({mode}) + model reload complete")
+
+        if single_ticker:
+            # Only the per-stock model file changed. Add it to the LRU cache
+            # without touching existing entries (avoids the cache-reset race).
+            try:
+                new_path = _stock_model_path(single_ticker)
+                if os.path.exists(new_path):
+                    _stock_models[single_ticker] = joblib.load(new_path)
+                    _evict_old_models()
+                    print(f"✅ {single_ticker} model loaded into cache (no global reload)")
+            except Exception as exc:
+                print(f"⚠  Couldn't preload {single_ticker} into cache: {exc} "
+                      f"(it will still load on first /live request)")
+        else:
+            # Full retrain — full reload is needed for global/regime models.
+            _reload_artefacts()
+            print(f"✅ Training ({mode}) + model reload complete")
     finally:
         _retraining = False
 
