@@ -1,4 +1,4 @@
-# QP-38618783-51b 2026-05-10 06:39:22
+# QP-2cd6fb11-bda 2026-05-11 06:02:02
 # ── train.py v6 — 5 accuracy improvements ────────────────────────────────────
 """
 Changes from v5:
@@ -28,6 +28,12 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 import joblib
+
+# Tickers Yahoo Finance reliably fails to serve. Skip them to prevent
+# repeated download retries that corrupt the C heap (causing "double free"
+# / "corrupted size vs. prev_size" crashes during auto-retrain).
+BAD_TICKERS = {"LTIM.NS", "TATAMOTORS.NS"}
+
 from datetime import datetime
 from xgboost import XGBClassifier
 from sklearn.model_selection import TimeSeriesSplit
@@ -557,16 +563,30 @@ def train():
 
     all_frames, failed = [], []
 
+    import gc
     for s in stocks:
+        # Skip known-bad tickers proactively — prevents heap corruption from
+        # repeated yfinance failures during auto-retrain
+        if s in BAD_TICKERS:
+            print(f"⏭  Skipping {s} (known unreliable on Yahoo)")
+            failed.append(s); continue
+
         print(f"⬇  {s}…")
         raw = None
-        for _ in range(3):
+        # Single attempt + 1 retry. yfinance failures rarely recover on
+        # immediate retry, and 3 retries × multiple flaky tickers = corruption.
+        for _attempt in range(2):
             try:
                 raw = yf.download(s, period=PERIOD, interval="1d",
-                                  auto_adjust=True, progress=False)
+                                  auto_adjust=True, progress=False,
+                                  threads=False)  # threads=False prevents libcurl race conditions
                 if not raw.empty: break
             except Exception: pass
-            import time; time.sleep(2)
+            import time; time.sleep(1)
+
+        # Force GC after every download — releases yfinance's internal
+        # session/parser state so it doesn't accumulate across stocks
+        gc.collect()
 
         if raw is None or raw.empty or len(raw) < 150:
             print(f"   ⚠  Skipping {s} — insufficient data")
@@ -700,5 +720,137 @@ def train():
 
     return metadata
 
+
+def train_single_stock(ticker: str) -> bool:
+    """Train only a per-stock model for the given ticker.
+    Used for new stock additions — ~20-30s instead of ~3-5min full retrain.
+    Does NOT touch the global or regime models. Run a full Retrain (button)
+    to refresh those periodically.
+
+    Returns True on success, False on any failure (insufficient data, Yahoo
+    error, etc).
+    """
+    print(f"\n🎯  SINGLE-STOCK TRAIN: {ticker}")
+    print("=" * 60)
+
+    if ticker in BAD_TICKERS:
+        print(f"⏭   {ticker} is on BAD_TICKERS skip list — refusing")
+        return False
+
+    # ─── Download macro indicators (small, fast) ──────────────────────
+    def _dl(sym):
+        try:
+            r = yf.download(sym, period=PERIOD, interval="1d",
+                            auto_adjust=True, progress=False, threads=False)
+            return r["Close"].squeeze() if not r.empty else None
+        except Exception:
+            return None
+
+    print("⬇   Downloading macro indicators…")
+    nifty_raw = yf.download("^NSEI", period=PERIOD, interval="1d",
+                            auto_adjust=True, progress=False, threads=False)
+    if nifty_raw is None or nifty_raw.empty:
+        print("✗   Couldn't download Nifty — aborting")
+        return False
+    nifty_close  = nifty_raw["Close"].squeeze()
+    nifty_ma200  = nifty_close.rolling(200).mean()
+    nifty_return = nifty_close.pct_change(20)
+
+    vix_us_close   = _dl("^VIX")
+    vix_in_close   = _dl("^INDIAVIX")
+    us10y_close    = _dl("^TNX")
+    copper_close   = _dl("HG=F")
+    shanghai_close = _dl("000001.SS")
+    usdinr_close   = _dl("INR=X")
+    crude_close    = _dl("BZ=F")
+    sp500_close    = _dl("^GSPC")
+    nasdaq_close   = _dl("^IXIC")
+
+    # ─── Download the new stock ───────────────────────────────────────
+    print(f"⬇   Downloading {ticker}…")
+    raw = None
+    for _attempt in range(2):
+        try:
+            raw = yf.download(ticker, period=PERIOD, interval="1d",
+                              auto_adjust=True, progress=False, threads=False)
+            if not raw.empty: break
+        except Exception: pass
+        import time; time.sleep(1)
+    import gc; gc.collect()
+
+    if raw is None or raw.empty or len(raw) < 150:
+        print(f"✗   Insufficient data for {ticker}")
+        return False
+
+    # ─── Label encoder (extend if needed for new ticker) ──────────────
+    le = None
+    if os.path.exists(LE_PATH):
+        try:
+            le = joblib.load(LE_PATH)
+        except Exception:
+            le = None
+
+    if le is None:
+        le = LabelEncoder()
+        le.fit([ticker])
+    elif ticker not in list(le.classes_):
+        new_classes = sorted(set(list(le.classes_) + [ticker]))
+        le.classes_ = np.array(new_classes)
+        try:
+            joblib.dump(le, LE_PATH)
+            print(f"   📝 Extended label encoder with {ticker}")
+        except Exception as e:
+            print(f"   ⚠   Could not save label encoder: {e}")
+
+    try:
+        ticker_code = int(le.transform([ticker])[0])
+    except Exception:
+        ticker_code = 0
+    sector_code = SECTOR_MAP.get(ticker, 9)
+
+    # ─── Build features (includes all Path 2 features) ────────────────
+    print("⚙   Computing features…")
+    try:
+        feat_df = build_features(
+            raw, ticker_code, sector_code,
+            nifty_close, nifty_ma200, nifty_return,
+            usdinr_close=usdinr_close, crude_close=crude_close,
+            sp500_close=sp500_close, nasdaq_close=nasdaq_close,
+            vix_us_close=vix_us_close, vix_in_close=vix_in_close,
+            us10y_close=us10y_close, copper_close=copper_close,
+            shanghai_close=shanghai_close,
+        )
+    except Exception as e:
+        print(f"✗   Feature build failed: {e}")
+        return False
+
+    feat_df = feat_df.dropna()
+    if len(feat_df) < 100:
+        print(f"✗   Too few clean samples ({len(feat_df)}) — need ≥100")
+        return False
+
+    # ─── Train + calibrate ────────────────────────────────────────────
+    active_feats = get_active_features()
+    X = feat_df[active_feats]
+    y = feat_df["Target"]
+    buy_pct = float(y.mean()) if len(y) else 0.5
+    spw = float(np.clip((1 - buy_pct) / max(buy_pct, 0.01), 0.5, 3.0))
+
+    print(f"🧠  Training on {len(X)} samples ({buy_pct*100:.1f}% positive)…")
+    pm = make_xgb(scale_pos_weight=spw, n_feat=len(active_feats))
+    pm.fit(X, y)
+    pm_cal = calibrate_model(pm, X, y)
+    joblib.dump(pm_cal, stock_model_path(ticker))
+
+    print(f"✅  Per-stock model saved: {ticker} ({len(X)} samples)")
+    print("=" * 60)
+    return True
+
+
 if __name__ == "__main__":
-    train()
+    import sys
+    if len(sys.argv) >= 3 and sys.argv[1] == "--single":
+        ok = train_single_stock(sys.argv[2])
+        sys.exit(0 if ok else 1)
+    else:
+        train()
