@@ -1,4 +1,4 @@
-# QP-2cd6fb11-bda 2026-05-11 06:02:02
+# QP-c540811f-9fc 2026-05-11 07:12:51
 # ── train.py v6 — 5 accuracy improvements ────────────────────────────────────
 """
 Changes from v5:
@@ -737,18 +737,29 @@ def train_single_stock(ticker: str) -> bool:
         print(f"⏭   {ticker} is on BAD_TICKERS skip list — refusing")
         return False
 
+    def _flatten_cols(df):
+        """Flatten yfinance MultiIndex columns. Newer yfinance versions return
+        columns like [('Open','RELIANCE.NS'), ...] even for single tickers."""
+        if df is None or df.empty:
+            return df
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
+        return df
+
     # ─── Download macro indicators (small, fast) ──────────────────────
     def _dl(sym):
         try:
             r = yf.download(sym, period=PERIOD, interval="1d",
                             auto_adjust=True, progress=False, threads=False)
-            return r["Close"].squeeze() if not r.empty else None
+            r = _flatten_cols(r)
+            return r["Close"].squeeze() if (r is not None and not r.empty) else None
         except Exception:
             return None
 
     print("⬇   Downloading macro indicators…")
     nifty_raw = yf.download("^NSEI", period=PERIOD, interval="1d",
                             auto_adjust=True, progress=False, threads=False)
+    nifty_raw = _flatten_cols(nifty_raw)
     if nifty_raw is None or nifty_raw.empty:
         print("✗   Couldn't download Nifty — aborting")
         return False
@@ -773,7 +784,8 @@ def train_single_stock(ticker: str) -> bool:
         try:
             raw = yf.download(ticker, period=PERIOD, interval="1d",
                               auto_adjust=True, progress=False, threads=False)
-            if not raw.empty: break
+            raw = _flatten_cols(raw)
+            if raw is not None and not raw.empty: break
         except Exception: pass
         import time; time.sleep(1)
     import gc; gc.collect()
@@ -824,6 +836,9 @@ def train_single_stock(ticker: str) -> bool:
         print(f"✗   Feature build failed: {e}")
         return False
 
+    # Flatten feat_df columns too — defensive against build_features propagating
+    # any MultiIndex structure from upstream data
+    feat_df = _flatten_cols(feat_df)
     feat_df = feat_df.dropna()
     if len(feat_df) < 100:
         print(f"✗   Too few clean samples ({len(feat_df)}) — need ≥100")
