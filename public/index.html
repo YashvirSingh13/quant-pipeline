@@ -1,4 +1,4 @@
-<!DOCTYPE html><!-- QP-e46f3d21-c4d 2026-05-11 05:54:40 -->
+<!DOCTYPE html><!-- QP-618fe017-f98 2026-05-25 04:47:43 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -664,7 +664,7 @@ select,input,button { font-family:var(--mono);font-size:20px;outline:none; }
 }
 </style>
 </head>
-<body><div style="position:fixed;bottom:8px;right:10px;font-size:11px;color:#0ff;z-index:99999;font-family:monospace;background:#000;padding:3px 6px;border:1px solid #0ff;border-radius:3px;font-weight:bold">v.e46f3d21 05:54</div>
+<body><div style="position:fixed;bottom:8px;right:10px;font-size:11px;color:#0ff;z-index:99999;font-family:monospace;background:#000;padding:3px 6px;border:1px solid #0ff;border-radius:3px;font-weight:bold">v.618fe017 04:47</div>
 <div class="bg-orb bg-orb-1"></div>
 <div class="bg-orb bg-orb-2"></div>
 
@@ -1495,6 +1495,28 @@ async function fetchLive(){
     // Update ENGINE_LABELS with server-provided short names (fixes overlap on all devices)
     if(d.engine_labels) Object.assign(ENGINE_LABELS, d.engine_labels);
     if(d.consensus) renderConsensus(d.consensus,d.engines);
+    // Surface real NSE Bhavcopy delivery % when available
+    if(d.delivery_pct != null){
+      let el = document.getElementById("delivery-pct-badge");
+      if(!el){
+        el = document.createElement("div");
+        el.id = "delivery-pct-badge";
+        el.style.cssText = "display:inline-block;margin-left:12px;padding:4px 12px;border:1px solid rgba(0,200,255,.4);border-radius:4px;font-family:var(--mono);font-size:13px;color:#0ff;background:rgba(0,40,60,.3)";
+        const sigEl = document.getElementById("consensus-sig");
+        if(sigEl && sigEl.parentNode) sigEl.parentNode.appendChild(el);
+      }
+      const pct = d.delivery_pct;
+      let label = "normal";
+      let col = "#0ff";
+      if(pct >= 60){ label = "strong"; col = "#00ff9f"; }
+      else if(pct < 30){ label = "weak"; col = "#ff4d6d"; }
+      el.style.color = col;
+      el.style.borderColor = col + "66";
+      el.textContent = `📊 Delivery: ${pct.toFixed(1)}% (${label})`;
+    } else {
+      const el = document.getElementById("delivery-pct-badge");
+      if(el) el.remove();
+    }
     // Macro context row
     if(d.features){
       const f=d.features;
