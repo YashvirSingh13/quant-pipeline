@@ -1,4 +1,4 @@
-# QP-4abb42fb-477 2026-05-11 12:30:43
+# QP-618fe017-f98 2026-05-25 04:47:43
 # QuantPipeline server QP-c04c8d65-e1d generated 2026-05-09 02:37:35
 """
 server/app.py — Upgraded FastAPI backend v4.
@@ -1065,8 +1065,20 @@ def _live_features(ticker: str, df=None) -> dict:
     _del_vs  = feats.get("Volume_Spike", 1.0)
     _del_atr = abs(feats.get("ATR", 1.0))
     _del_px  = max(1.0, feats.get("_last_price", 100.0))
-    feats["Delivery_Pct_Proxy"] = float(np.clip(
-        _del_vs / max(0.01, 1 + _del_atr / _del_px * 10), 0, 2))
+    _proxy = float(np.clip(_del_vs / max(0.01, 1 + _del_atr / _del_px * 10), 0, 2))
+
+    # Try real NSE Bhavcopy delivery % first; fall back to proxy on any failure.
+    feats["Delivery_Pct_Proxy"] = _proxy
+    feats["_delivery_pct_real"] = None  # for UI to surface to the user
+    try:
+        from engines.nse_bhavcopy import get_delivery_data
+        _bhav = get_delivery_data(ticker)
+        if _bhav and _bhav.get("delivery_pct_norm") is not None:
+            feats["Delivery_Pct_Proxy"] = float(_bhav["delivery_pct_norm"])
+            feats["_delivery_pct_real"] = float(_bhav["delivery_pct"])
+            print(f"📊 Delivery % from Bhavcopy: {_bhav['delivery_pct']:.1f}% (norm={_bhav['delivery_pct_norm']:.2f})")
+    except Exception as _bhav_exc:
+        print(f"⚠  Bhavcopy lookup failed for {ticker}: {_bhav_exc} (using proxy)")
 
     # ── Path 2: 6 new technical features from OHLCV ──────────────────────────
     try:
@@ -1678,6 +1690,7 @@ def predict_live(ticker: str):
     return _json_safe({
         **ml_result,
         "consensus":      consensus,
+        "delivery_pct":   feats.get("_delivery_pct_real"),  # None if Bhavcopy unavailable
         "features":       {k: v for k, v in feats.items() if not k.startswith("_")},
         "last_price":     feats.get("_last_price", 0),
         "as_of":          feats.get("_as_of", ""),
